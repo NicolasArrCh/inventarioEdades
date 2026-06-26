@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gestor de Inventario por Edades · Huevos</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🥚</text></svg>">
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body>
+<div class="app">
+
+  <!-- ===================== SIDEBAR ===================== -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-logo">🥚</div>
+      <div class="brand-txt">
+        <strong>InventarioEdades</strong>
+        <span>Gestión de frescura</span>
+      </div>
+    </div>
+
+    <nav class="nav">
+      <button class="nav-item active" data-vista="edades"     data-titulo="Resumen e inventario por edades">🗓️ Resumen y edades</button>
+      <button class="nav-item"        data-vista="criticos"   data-titulo="Combinaciones críticas">🚨 Críticos</button>
+      <button class="nav-item"        data-vista="proyeccion" data-titulo="Proyección de vencimiento">⏳ Proyección</button>
+      <button class="nav-item"        data-vista="canales"    data-titulo="Canales de cliente">🧭 Canales</button>
+      <button class="nav-item"        data-vista="historico"  data-titulo="Histórico (3 meses)">📈 Histórico</button>
+    </nav>
+
+    <div class="sidebar-foot">
+      <div class="leyenda-zonas">
+        <div class="lz-title">Días de inventario</div>
+        <div><span class="dot" style="background:#94a3b8"></span> 0–2 · bajo</div>
+        <div><span class="dot" style="background:#16a34a"></span> 3–5 · óptimo</div>
+        <div><span class="dot" style="background:#dc2626"></span> ≥ 6 · crítico</div>
+      </div>
+      <div class="meta-mini">
+        <div>Corte: <strong id="meta-corte">—</strong></div>
+        <div>Actualizado: <strong id="meta-actualizado">—</strong></div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ===================== MAIN ===================== -->
+  <main class="main">
+
+    <!-- Topbar -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <h1 id="topbar-titulo">Resumen e inventario por edades</h1>
+        <div class="breadcrumb" id="breadcrumb"></div>
+      </div>
+      <div class="topbar-right">
+        <span class="nivel-badge nb-nacional" id="nivel-badge">NACIONAL</span>
+        <span class="sin-reporte" id="sin-reporte-badge"></span>
+      </div>
+    </header>
+
+    <!-- Barra de filtros principal -->
+    <section class="filtros">
+      <div class="ms" id="ms-region"></div>
+      <div class="ms" id="ms-cedi"></div>
+      <div class="filtro filtro-chips">
+        <label>Tipo de huevo</label>
+        <div class="chips" id="f-items"></div>
+      </div>
+      <div class="filtro filtro-chips">
+        <label>Canales de cliente</label>
+        <div class="chips" id="f-canales"></div>
+      </div>
+      <button class="btn-mas" id="f-mas" type="button">⚙ Más filtros <span id="mas-count"></span></button>
+      <button class="btn-reset" id="f-reset" type="button">↺ Limpiar</button>
+    </section>
+
+    <!-- Filtros avanzados (desplegable) -->
+    <section class="filtros-avanzados" id="filtros-avanzados" hidden>
+      <div class="fa-group">
+        <label>Tipo de ubicación</label>
+        <div class="segmented" id="f-ubic">
+          <button type="button" data-ubic="all" class="seg-on">Todas</button>
+          <button type="button" data-ubic="planta">Plantas</button>
+          <button type="button" data-ubic="cedi">CEDIs</button>
+        </div>
+      </div>
+      <div class="fa-group">
+        <label>Estado de reporte</label>
+        <div class="segmented" id="f-reporte">
+          <button type="button" data-rep="all" class="seg-on">Todos</button>
+          <button type="button" data-rep="si">Reportó</button>
+          <button type="button" data-rep="no">Sin reporte</button>
+        </div>
+      </div>
+      <div class="fa-group">
+        <label>Zona de cobertura (días inv.)</label>
+        <div class="chips" id="f-zonas">
+          <button type="button" class="chip chip-on" data-val="gris">⬜ 0–2</button>
+          <button type="button" class="chip chip-on" data-val="verde">🟩 3–5</button>
+          <button type="button" class="chip chip-on" data-val="rojo">🟥 ≥ 6</button>
+        </div>
+      </div>
+      <div class="fa-group">
+        <label>Edad promedio (días)</label>
+        <div class="fc-range">
+          <input type="number" id="f-edad-min" class="fc-input" min="0" max="20" value="0">
+          <span class="fc-sep">a</span>
+          <input type="number" id="f-edad-max" class="fc-input" min="0" max="20" value="20">
+        </div>
+      </div>
+      <div class="fa-group">
+        <label>Días de inventario</label>
+        <div class="fc-range">
+          <input type="number" id="f-dias-min" class="fc-input" min="0" value="0">
+          <span class="fc-sep">a</span>
+          <input type="number" id="f-dias-max" class="fc-input" min="0" value="99">
+        </div>
+      </div>
+      <div class="fa-group">
+        <label>Inventario mínimo</label>
+        <input type="number" id="f-inv-min" class="fc-input" min="0" step="1000" value="0">
+      </div>
+    </section>
+
+    <!-- ============ VISTAS ============ -->
+    <div class="contenido">
+
+      <!-- INVENTARIO POR EDADES (a detalle) -->
+      <section class="vista visible" id="vista-edades">
+        <div class="kpis" id="kpis-edades"></div>
+
+        <!-- Histograma por día (protagonista) -->
+        <div class="card">
+          <div class="card-head">
+            <h3>Inventario por edad del huevo (días)</h3>
+            <span class="hint">⬜ 0–2 bajo · 🟩 3–5 óptimo · 🟥 ≥ 6 crítico</span>
+          </div>
+          <div id="chart-hist-edades"></div>
+        </div>
+
+        <!-- TABLA DETALLE: CEDI × día de edad -->
+        <div class="card">
+          <div class="card-head">
+            <h3>Detalle de inventario por edades · CEDI × día</h3>
+            <span class="hint">Cantidad de huevos según su antigüedad (días)</span>
+          </div>
+          <div class="tabla-wrap">
+            <table id="tabla-edades-detalle">
+              <thead><tr id="edades-detalle-head"></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="grid grid-2">
+          <div class="card">
+            <div class="card-head"><h3>Distribución por zona</h3></div>
+            <div id="chart-dist-edades"></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><h3>Huevo crítico (≥ 6 d) por tipo</h3></div>
+            <div id="chart-edades-items"></div>
+          </div>
+        </div>
+
+        <div class="grid grid-2">
+          <div class="card">
+            <div class="card-head"><h3>Ranking de CEDIs · % en edad crítica</h3></div>
+            <div id="chart-ranking-edades"></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><h3>Días de inventario por CEDI</h3></div>
+            <div id="chart-dias-edades"></div>
+          </div>
+        </div>
+
+        <div class="grid grid-2">
+          <div class="card">
+            <div class="card-head"><h3>🚨 Panel de alertas</h3></div>
+            <div class="lista-scroll" id="panel-alertas"></div>
+          </div>
+          <div class="card">
+            <div class="card-head"><h3>🤖 Recomendaciones IA <span class="live">● en vivo</span></h3></div>
+            <div class="lista-scroll" id="panel-ia-edades"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- CRITICOS -->
+      <section class="vista" id="vista-criticos">
+
+        <!-- Panel de filtros especializados — renderizado por JS -->
+        <div id="panel-filtros-criticos"></div>
+
+        <div class="kpis">
+          <div class="kpi z-rojo"><div class="kpi-icon">🚨</div><div class="kpi-body">
+            <div class="kpi-label">Combinaciones críticas</div>
+            <div class="kpi-valor" id="criticos-count">0</div>
+            <div class="kpi-sub">con huevo ≥ umbral de edad</div></div></div>
+          <div class="kpi z-rojo"><div class="kpi-icon">🥚</div><div class="kpi-body">
+            <div class="kpi-label">Unidades sobre umbral</div>
+            <div class="kpi-valor" id="criticos-unidades">0</div>
+            <div class="kpi-sub">huevos en edad crítica</div></div></div>
+        </div>
+
+        <div class="card card-wide">
+          <div class="card-head">
+            <h3>Detalle de combinaciones críticas</h3>
+            <span class="hint">Clic en encabezado de columna para ordenar</span>
+          </div>
+          <div class="tabla-wrap">
+            <table id="tabla-criticos">
+              <thead><tr>
+                <th>CEDI</th>
+                <th>Canal</th>
+                <th>Tipo de huevo</th>
+                <th class="num sortable" data-sort="edad">Edad prom.<span class="sort-ind"></span></th>
+                <th class="num sortable" data-sort="criticos">Unidades ≥ umbral<span class="sort-ind"></span></th>
+                <th class="num sortable" data-sort="pct">% crítico<span class="sort-ind"></span></th>
+                <th class="num sortable" data-sort="inv">Inventario<span class="sort-ind"></span></th>
+                <th class="num sortable" data-sort="dias">Días inv.<span class="sort-ind"></span></th>
+              </tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>🤖 Recomendaciones IA <span class="live">● en vivo</span></h3><span class="hint">Días bajos y críticos en el alcance actual</span></div>
+          <div class="lista-grid" id="panel-ia-criticos"></div>
+        </div>
+      </section>
+
+      <!-- PROYECCION -->
+      <section class="vista" id="vista-proyeccion">
+        <div class="kpis" id="kpis-proyeccion"></div>
+        <div class="card">
+          <div class="card-head"><h3>Top 10 · unidades que se pasarán de 5 días si no se actúa</h3></div>
+          <div id="chart-proyeccion"></div>
+        </div>
+        <div class="card card-wide">
+          <div class="card-head">
+            <h3>Detalle de proyección</h3>
+            <span class="hint">En riesgo = inventario − (venta diaria × días para vencer)</span>
+          </div>
+          <div class="tabla-wrap">
+            <table id="tabla-proyeccion">
+              <thead><tr>
+                <th>CEDI</th><th>Canal</th><th>Tipo de huevo</th>
+                <th class="num">Edad</th><th class="num">Inventario</th><th class="num">Venta/día</th>
+                <th class="num">Días p/ vencer</th><th class="num">En riesgo</th>
+              </tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>🤖 Recomendaciones IA <span class="live">● en vivo</span></h3><span class="hint">Acciones para evitar el vencimiento</span></div>
+          <div class="lista-grid" id="panel-ia-proyeccion"></div>
+        </div>
+      </section>
+
+      <!-- CANALES (unificado: submenu de canales) -->
+      <section class="vista" id="vista-canales">
+        <div class="subtabs" id="canal-subtabs"></div>
+        <div id="canal-contenido"></div>
+      </section>
+
+      <!-- HISTORICO -->
+      <section class="vista" id="vista-historico">
+        <p class="nota">Serie de los últimos 90 días (totales nacionales de demostración). En producción se alimentará desde la base de datos histórica.</p>
+        <div class="grid grid-2">
+          <div class="card"><div class="card-head"><h3>Inventario total</h3></div><div id="chart-hist-inv"></div></div>
+          <div class="card"><div class="card-head"><h3>Días de inventario</h3></div><div id="chart-hist-dias"></div></div>
+          <div class="card"><div class="card-head"><h3>% en edad crítica</h3></div><div id="chart-hist-critico"></div></div>
+          <div class="card"><div class="card-head"><h3>Venta diaria</h3></div><div id="chart-hist-venta"></div></div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+</div>
+
+<script src="assets/js/data.js"></script>
+<script src="assets/js/charts.js"></script>
+<script src="assets/js/app.js"></script>
+</body>
+</html>
