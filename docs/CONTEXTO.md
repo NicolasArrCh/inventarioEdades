@@ -5,7 +5,7 @@
 > en la web. Es la fuente de verdad para construir el backend, los flujos de n8n y
 > el modelo de datos definitivo.
 >
-> Última actualización: 2026-06-26
+> Última actualización: 2026-07-01
 
 ---
 
@@ -141,6 +141,10 @@ El cliente trabaja la gestión con estas **4 tallas** (nomenclatura de empaque a
   surten huevos a diario para evitar escasez.
 - Todos los umbrales son **parametrizables** (`PARAMS` en `data.js`).
 
+> ⚠️ **El semáforo visual (gris/verde/rojo, corte en 6 días) y el umbral de las
+> alertas operativas de sobre-inventario (Alerta 1/2, corte en 5 días) son dos
+> reglas independientes** — no confundirlas. Ver sección 11.
+
 ---
 
 ## 7. Proceso manual actual (a automatizar)
@@ -219,7 +223,102 @@ partir de la geografía real de arriba.
 
 ---
 
-## 11. Fuentes web consultadas
+## 11. Pipeline TAT real — reglas confirmadas contra datos (v2, 2026-07-01)
+
+> Código de referencia en [`pipeline/`](../pipeline/): `tat_pipeline.py` (reglas de negocio,
+> lee 3 `.xlsx` y produce un JSON) + `tat_report.py` (maquetación del informe PDF). El detalle
+> completo, con las cifras y el paso a paso de cada validación, está en
+> [`pipeline/PROYECTO_TAT_MEMORIA.md`](../pipeline/PROYECTO_TAT_MEMORIA.md) — este apartado es
+> el resumen ejecutivo para no perder estas reglas al trabajar la maquetación del dashboard.
+
+Estas reglas se confirmaron corriendo el pipeline contra un informe real ya entregado
+(`Informe_Dias_Inventario_30062026_19.pdf`, corte 30/06/2026) más su archivo de ventas
+(`ventas-1.xlsx`). Aplican al **informe TAT en PDF** (el otro entregable del proyecto), pero
+varias son relevantes también para este dashboard porque describen la fuente de verdad de los
+datos que eventualmente lo alimentarán:
+
+- **Venta diaria promedio excluye domingo.** No es "total ÷ días calendario", sino
+  "total de lun-sáb ÷ días hábiles disponibles". Confirmado exacto contra datos reales.
+- **El KPI "Inventario total" / "Días de inventario global" es de toda la compañía**, no solo
+  del canal TAT (en la corrida de referencia: 27,25M unidades). El resto del informe (regional,
+  alertas, canal TAT) sigue siendo específico de TAT.
+- **Alerta 1/2 (sobre-inventario) usa umbral de 5 días de cobertura, no 6.** El semáforo visual
+  del dashboard (gris/verde/rojo, corte en 6) es una regla aparte y no cambia.
+- **El modelo de frescura PEPS** (despachar primero el lote más viejo) se calcula para
+  **todas** las tiendas TAT, no solo las que están fuera de la Alerta 1. Se agregó la métrica
+  **"días a vender"** = unidades a gestionar ÷ venta diaria de esa tienda.
+- **Regla "GRIS manda":** todo artículo cuyo nombre contiene "GRIS" se suma también a la
+  categoría `GRIS SUELTO`, sin restarlo de su categoría original (solape intencional, se marca
+  con asterisco en el informe).
+- **Regional (`ZONA`) es siempre la fuente de verdad**, nunca un mapeo manual de ciudad →
+  departamento. Ojo: el nombre de dos regionales aparece distinto según la fuente
+  ("COSTA ORIENTE"/"CENTRO" en el PDF del 30/06 vs. "COSTA"/"CENTRO ORIENTE" en el `.xlsx` del
+  25/06) — pendiente de confirmar contra un `.xlsm` reciente antes de fijar nombres en el
+  dashboard.
+
+### Hallazgos abiertos (pendientes de decisión de negocio, no resueltos por cuenta propia)
+
+1. **Bogotá Montevideo vs. Siberia** no siempre se puede distinguir por texto de canal —
+   ≈120.000 u/día quedan en un bucket `TAT BOGOTA (sin distinguir)`, sin inventario propio.
+2. **Pereira y Montería-Autoservicios** tienen canales reales de TAT que no contienen la
+   palabra "TAT" en el nombre → quedan fuera del total oficial (~13.180 u/día).
+3. **Umbral de frescura de 5 días**: sigue sin confirmar si responde a vida útil del producto o
+   a acuerdo comercial con el cliente.
+4. **Asignación de tienda por texto** no reproduce los números oficiales por tienda salvo casos
+   simples; se recomendó pedir al negocio un **maestro de tiendas** (bodega → TAT → regional)
+   para dejar de depender de reglas de texto frágiles.
+
+> Estos hallazgos son del informe TAT en PDF, pero aplican igual si este dashboard llega a
+> conectarse a las mismas fuentes: no asumir números "oficiales" por tienda/CEDI hasta tener el
+> maestro de tiendas.
+
+### 11.1 Dashboard con datos REALES del informe (actualizado 2026-07-01)
+
+El dashboard se reestructuró primero para *imitar la lógica* del informe real
+`Informe_Dias_Inventario_30062026_19.pdf` (corte 30/06/2026) con cifras simuladas, y después se
+reemplazaron esas cifras por los **números literales** del informe y de `ventas-1.xlsx` (archivos
+del cliente, no versionados en este repo por ser datos comerciales). Estado actual:
+
+**100% real (literal del informe, en `assets/js/data.js`):**
+- **Detalle por Talla** (`DB.items`): YUMBO/XXL, HUEVO DE SEGUNDA, M, XL, B, C, L, AA, A, AAA, con
+  inventario/venta/días exactos del informe (pág. 1). AAA sin venta → días `null` → se muestra "—".
+- **Indicadores de compañía** (`DB.meta`): inventario total 27.251.311, huevo sin clasificar
+  2.743.834, días de inventario global 5,2 — no cambian con los filtros, igual que en el informe.
+- **Días de Inventario TAT por Regional** (`DB.regionalTAT`): Occidente / Costa Oriente / Centro
+  (pág. 2), agregado independiente de las tablas por tienda — el informe no los reconcilia entre
+  sí y este dashboard tampoco lo fuerza.
+- **Alerta 1** (`DB.tiendasTAT` con `alerta:1`): 4 tiendas con cobertura ≥5 días (pág. 3), literal.
+- **Alerta 2** (`DB.tiendasTAT` con `alerta:2`): 11 tiendas con cobertura <5 días + PEPS por
+  referencia (págs. 3-5), literal — incluye el detalle por tienda/referencia con "unidades en
+  riesgo" y "días a vender".
+- **Alerta 3**: el informe no reporta ninguna tienda (nota literal en `DB.notaAlerta3`).
+
+**Discrepancia conocida, documentada tal cual (no "corregida"):** el encabezado de "Referencias en
+riesgo" (pág. 4) dice literalmente 9 tiendas / 22 referencias / 1.250.738 unidades
+(`DB.alerta2Resumen`), pero sumar las filas de detalle de esas mismas 9 tiendas da 42 filas /
+1.013.661 unidades. Es una inconsistencia del propio informe (consistente con los demás problemas
+de calidad de dato ya documentados en `pipeline/PROYECTO_TAT_MEMORIA.md`) — el dashboard muestra
+**ambos números** (el del encabezado, fijo, y el recalculado sobre el alcance filtrado) sin
+intentar reconciliarlos.
+
+**Sin fuente real todavía (se muestra así, no se inventa un número):**
+- El desglose de inventario **por día de edad y por CEDI** (histograma, tabla CEDI × día) requiere
+  el archivo de inventario con lotes fechados (hoja `INV. EDADES` del `.xlsm`), que no se ha
+  recibido — ver sección 0.1 de `pipeline/PROYECTO_TAT_MEMORIA.md`. Se retiró de la vista Resumen
+  y se reemplazó por "Días de inventario por talla" (gráfica de los datos reales que sí existen).
+- Los canales **Food Service, Grandes Superficies, Hard Discount y Mayoristas** no tienen fuente
+  real (el informe solo cubre TAT) — su pestaña muestra un estado vacío explícito en vez de datos
+  simulados (`DB.canales[].datosReales === false`).
+- El **histórico de 90 días** sigue siendo una serie ilustrativa (el informe es la foto de un solo
+  corte, no hay serie temporal real disponible) — la vista lo indica explícitamente.
+
+- **Regional TAT** (Occidente / Costa Oriente / Centro, `DB.regionalesTAT`) es la agrupación
+  comercial del informe, distinta del departamento geográfico usado para Nacional/Regional/CEDI.
+  Se usa como filtro especializado en las vistas Alerta 1/2 y Canales → TAT.
+
+---
+
+## 12. Fuentes web consultadas
 
 - LinkedIn — Incubadora Santander: <https://co.linkedin.com/company/incubadora-santander-s-a->
 - Sanovo Group (testimonial Kikes): <https://www.sanovogroup.com/en/egg/testimonials/kikes/>

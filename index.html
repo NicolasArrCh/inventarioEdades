@@ -22,8 +22,8 @@
 
     <nav class="nav">
       <button class="nav-item active" data-vista="edades"     data-titulo="Resumen e inventario por edades">🗓️ Resumen y edades</button>
-      <button class="nav-item"        data-vista="criticos"   data-titulo="Combinaciones críticas">🚨 Críticos</button>
-      <button class="nav-item"        data-vista="proyeccion" data-titulo="Proyección de vencimiento">⏳ Proyección</button>
+      <button class="nav-item"        data-vista="criticos"   data-titulo="Alerta 1 — Sobre-inventario TAT (cobertura ≥ 5 días)">🔺 Alerta 1</button>
+      <button class="nav-item"        data-vista="proyeccion" data-titulo="Alerta 2 — Frescura PEPS TAT (cobertura < 5 días)">🍳 Alerta 2</button>
       <button class="nav-item"        data-vista="canales"    data-titulo="Canales de cliente">🧭 Canales</button>
       <button class="nav-item"        data-vista="historico"  data-titulo="Histórico (3 meses)">📈 Histórico</button>
     </nav>
@@ -62,12 +62,8 @@
       <div class="ms" id="ms-region"></div>
       <div class="ms" id="ms-cedi"></div>
       <div class="filtro filtro-chips">
-        <label>Tipo de huevo</label>
+        <label>Talla / categoría</label>
         <div class="chips" id="f-items"></div>
-      </div>
-      <div class="filtro filtro-chips">
-        <label>Canales de cliente</label>
-        <div class="chips" id="f-canales"></div>
       </div>
       <button class="btn-mas" id="f-mas" type="button">⚙ Más filtros <span id="mas-count"></span></button>
       <button class="btn-reset" id="f-reset" type="button">↺ Limpiar</button>
@@ -92,31 +88,7 @@
         </div>
       </div>
       <div class="fa-group">
-        <label>Zona de cobertura (días inv.)</label>
-        <div class="chips" id="f-zonas">
-          <button type="button" class="chip chip-on" data-val="gris">⬜ 0–2</button>
-          <button type="button" class="chip chip-on" data-val="verde">🟩 3–5</button>
-          <button type="button" class="chip chip-on" data-val="rojo">🟥 ≥ 6</button>
-        </div>
-      </div>
-      <div class="fa-group">
-        <label>Edad promedio (días)</label>
-        <div class="fc-range">
-          <input type="number" id="f-edad-min" class="fc-input" min="0" max="20" value="0">
-          <span class="fc-sep">a</span>
-          <input type="number" id="f-edad-max" class="fc-input" min="0" max="20" value="20">
-        </div>
-      </div>
-      <div class="fa-group">
-        <label>Días de inventario</label>
-        <div class="fc-range">
-          <input type="number" id="f-dias-min" class="fc-input" min="0" value="0">
-          <span class="fc-sep">a</span>
-          <input type="number" id="f-dias-max" class="fc-input" min="0" value="99">
-        </div>
-      </div>
-      <div class="fa-group">
-        <label>Inventario mínimo</label>
+        <label>Inventario mínimo (tienda TAT)</label>
         <input type="number" id="f-inv-min" class="fc-input" min="0" step="1000" value="0">
       </div>
     </section>
@@ -126,52 +98,44 @@
 
       <!-- INVENTARIO POR EDADES (a detalle) -->
       <section class="vista visible" id="vista-edades">
-        <div class="kpis" id="kpis-edades"></div>
 
-        <!-- Histograma por día (protagonista) -->
+        <!-- Indicadores Generales de TODA LA COMPAÑÍA (no cambian con los filtros,
+             igual que el informe real "Días de Inventario") -->
         <div class="card">
           <div class="card-head">
-            <h3>Inventario por edad del huevo (días)</h3>
-            <span class="hint">⬜ 0–2 bajo · 🟩 3–5 óptimo · 🟥 ≥ 6 crítico</span>
+            <h3>Indicadores Generales · toda la compañía</h3>
+            <span class="hint">No varían con los filtros — ver docs/CONTEXTO.md sección 11</span>
           </div>
-          <div id="chart-hist-edades"></div>
+          <div class="kpis" id="kpis-compania"></div>
         </div>
 
-        <!-- TABLA DETALLE: CEDI × día de edad -->
+        <!-- Detalle por Talla (REAL — informe pág. 1) -->
         <div class="card">
           <div class="card-head">
-            <h3>Detalle de inventario por edades · CEDI × día</h3>
-            <span class="hint">Cantidad de huevos según su antigüedad (días)</span>
+            <h3>Detalle por Talla</h3>
+            <span class="hint">Color sobre días de inventario: ⬜ 0–2 · 🟩 3–5 · 🟥 ≥ 6. AAA sin venta se muestra con "—"</span>
           </div>
           <div class="tabla-wrap">
-            <table id="tabla-edades-detalle">
-              <thead><tr id="edades-detalle-head"></tr></thead>
+            <table id="tabla-talla-detalle">
+              <thead><tr><th>Talla / categoría</th><th class="num">Inventario</th><th class="num">Venta día</th><th class="num">Días de inventario</th></tr></thead>
               <tbody></tbody>
             </table>
           </div>
         </div>
 
-        <div class="grid grid-2">
-          <div class="card">
-            <div class="card-head"><h3>Distribución por zona</h3></div>
-            <div id="chart-dist-edades"></div>
+        <!-- Días de inventario por talla (misma fuente que la tabla, en gráfica) -->
+        <div class="card">
+          <div class="card-head">
+            <h3>Días de inventario por talla</h3>
+            <span class="hint">⬜ 0–2 bajo · 🟩 3–5 óptimo · 🟥 ≥ 6 crítico</span>
           </div>
-          <div class="card">
-            <div class="card-head"><h3>Huevo crítico (≥ 6 d) por tipo</h3></div>
-            <div id="chart-edades-items"></div>
-          </div>
+          <div id="chart-dias-talla"></div>
         </div>
 
-        <div class="grid grid-2">
-          <div class="card">
-            <div class="card-head"><h3>Ranking de CEDIs · % en edad crítica</h3></div>
-            <div id="chart-ranking-edades"></div>
-          </div>
-          <div class="card">
-            <div class="card-head"><h3>Días de inventario por CEDI</h3></div>
-            <div id="chart-dias-edades"></div>
-          </div>
-        </div>
+        <p class="nota">El desglose por edad (día a día) y por CEDI no se muestra aquí porque requiere el
+          archivo de inventario con lotes fechados (hoja <code>INV. EDADES</code> del <code>.xlsm</code>),
+          que todavía no se ha recibido — ver <code>docs/CONTEXTO.md</code> sección 11.1. El detalle real por
+          tienda TAT sí está disponible en las vistas <strong>Alerta 1</strong> y <strong>Alerta 2</strong>.</p>
 
         <div class="grid grid-2">
           <div class="card">
@@ -185,73 +149,78 @@
         </div>
       </section>
 
-      <!-- CRITICOS -->
+      <!-- ALERTA 1 — Sobre-inventario por tienda TAT (cobertura ≥ 5 días) -->
       <section class="vista" id="vista-criticos">
 
         <!-- Panel de filtros especializados — renderizado por JS -->
         <div id="panel-filtros-criticos"></div>
 
-        <div class="kpis">
-          <div class="kpi z-rojo"><div class="kpi-icon">🚨</div><div class="kpi-body">
-            <div class="kpi-label">Combinaciones críticas</div>
-            <div class="kpi-valor" id="criticos-count">0</div>
-            <div class="kpi-sub">con huevo ≥ umbral de edad</div></div></div>
-          <div class="kpi z-rojo"><div class="kpi-icon">🥚</div><div class="kpi-body">
-            <div class="kpi-label">Unidades sobre umbral</div>
-            <div class="kpi-valor" id="criticos-unidades">0</div>
-            <div class="kpi-sub">huevos en edad crítica</div></div></div>
-        </div>
+        <div class="kpis" id="kpis-criticos"></div>
+
+        <div class="kpis" id="alerta1-subtotales"></div>
+
+        <p class="nota" id="alerta1-nota-alerta3"></p>
 
         <div class="card card-wide">
           <div class="card-head">
-            <h3>Detalle de combinaciones críticas</h3>
-            <span class="hint">Clic en encabezado de columna para ordenar</span>
+            <h3>Alerta 1 — Detalle por tienda TAT</h3>
+            <span class="hint">Cobertura ≥ umbral. Clic en encabezado de columna para ordenar</span>
           </div>
           <div class="tabla-wrap">
             <table id="tabla-criticos">
               <thead><tr>
-                <th>CEDI</th>
-                <th>Canal</th>
-                <th>Tipo de huevo</th>
-                <th class="num sortable" data-sort="edad">Edad prom.<span class="sort-ind"></span></th>
-                <th class="num sortable" data-sort="criticos">Unidades ≥ umbral<span class="sort-ind"></span></th>
-                <th class="num sortable" data-sort="pct">% crítico<span class="sort-ind"></span></th>
-                <th class="num sortable" data-sort="inv">Inventario<span class="sort-ind"></span></th>
-                <th class="num sortable" data-sort="dias">Días inv.<span class="sort-ind"></span></th>
+                <th>Regional</th>
+                <th>Tienda TAT</th>
+                <th class="num sortable" data-sort="cobertura">Cobertura (d)<span class="sort-ind"></span></th>
+                <th class="num sortable" data-sort="invEdad">Inv. con edad<span class="sort-ind"></span></th>
+                <th class="num sortable" data-sort="aGestionar">A gestionar<span class="sort-ind"></span></th>
+                <th class="num sortable" data-sort="invTotal">Inv. total<span class="sort-ind"></span></th>
               </tr></thead>
               <tbody></tbody>
             </table>
           </div>
         </div>
         <div class="card">
-          <div class="card-head"><h3>🤖 Recomendaciones IA <span class="live">● en vivo</span></h3><span class="hint">Días bajos y críticos en el alcance actual</span></div>
+          <div class="card-head"><h3>🤖 Recomendaciones IA <span class="live">● en vivo</span></h3><span class="hint">Tiendas TAT en Alerta 1/2/3 en el alcance actual</span></div>
           <div class="lista-grid" id="panel-ia-criticos"></div>
         </div>
       </section>
 
-      <!-- PROYECCION -->
+      <!-- ALERTA 2 — Frescura PEPS por tienda TAT (cobertura < 5 días) -->
       <section class="vista" id="vista-proyeccion">
+
+        <!-- Panel de filtros especializados — renderizado por JS -->
+        <div id="panel-filtros-proyeccion"></div>
+
         <div class="kpis" id="kpis-proyeccion"></div>
-        <div class="card">
-          <div class="card-head"><h3>Top 10 · unidades que se pasarán de 5 días si no se actúa</h3></div>
-          <div id="chart-proyeccion"></div>
-        </div>
+
+        <p class="nota" id="alerta2-nota"></p>
+
         <div class="card card-wide">
           <div class="card-head">
-            <h3>Detalle de proyección</h3>
-            <span class="hint">En riesgo = inventario − (venta diaria × días para vencer)</span>
+            <h3>Alerta 2 — Inventario a gestionar por frescura, por tienda TAT</h3>
+            <span class="hint">Cobertura &lt; 5 días. Ordenado por unidades a gestionar (PEPS)</span>
           </div>
           <div class="tabla-wrap">
-            <table id="tabla-proyeccion">
+            <table id="tabla-alerta2">
               <thead><tr>
-                <th>CEDI</th><th>Canal</th><th>Tipo de huevo</th>
-                <th class="num">Edad</th><th class="num">Inventario</th><th class="num">Venta/día</th>
-                <th class="num">Días p/ vencer</th><th class="num">En riesgo</th>
+                <th>Regional</th><th>Tienda TAT</th>
+                <th class="num">Inv. con edad</th><th class="num">Venta día</th>
+                <th class="num">A gestionar</th><th class="num">Días a vender</th><th class="num">Inv. total</th>
               </tr></thead>
               <tbody></tbody>
             </table>
           </div>
         </div>
+
+        <div class="card card-wide">
+          <div class="card-head">
+            <h3>Referencias en riesgo de superar los 5 días</h3>
+            <span class="hint">PEPS por referencia con venta de la propia referencia — agrupado por tienda TAT</span>
+          </div>
+          <div id="detalle-referencias-riesgo"></div>
+        </div>
+
         <div class="card">
           <div class="card-head"><h3>🤖 Recomendaciones IA <span class="live">● en vivo</span></h3><span class="hint">Acciones para evitar el vencimiento</span></div>
           <div class="lista-grid" id="panel-ia-proyeccion"></div>

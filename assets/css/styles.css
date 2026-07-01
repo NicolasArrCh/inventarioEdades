@@ -255,7 +255,7 @@ th.num { text-align: right; }
 .txt-rojo { color: var(--rojo); }
 
 /* Badges y tags */
-.badge { display: inline-block; padding: 3px 9px; border-radius: 20px; font-size: 11.5px; font-weight: 700; }
+.badge { display: inline-block; padding: 3px 9px; border-radius: 20px; font-size: 11.5px; font-weight: 700; white-space: nowrap; }
 .b-gris  { background: #f1f5f9; color: #475569; }
 .b-verde { background: #dcfce7; color: #15803d; }
 .b-rojo  { background: #fee2e2; color: #b91c1c; }
