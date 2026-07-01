@@ -38,17 +38,19 @@
     tipoUbic: 'all',   // all | planta | cedi
     reporte:  'all',   // all | si | no
     invMin: 0,
+    // Umbral de cobertura (días): filtro GLOBAL que corta ambas alertas —
+    // Alerta 1 muestra tiendas con cobertura ≥ umbral, Alerta 2 tiendas con
+    // días a vender < umbral.
+    umbral: P.umbralAlertaCoberturaDias,
   };
 
   const stateAlerta1 = {
-    umbral: P.umbralAlertaCoberturaDias,
-    aGestMin: 0,
     sortCol: 'cobertura',
     sortDir: 'desc',
   };
 
   const stateAlerta2 = {
-    diasVenderMax: null,
+    diasVenderMax: null, // umbral del slider de tiempo (null = sin límite)
   };
 
   function zonaDe(dias) {
@@ -65,15 +67,22 @@
     const def = state.regiones.size === DB.regiones.length &&
       state.cedis.size === DB.cedis.length &&
       state.items.size === DB.items.length &&
-      state.tipoUbic === 'all' && state.reporte === 'all' && state.invMin === 0;
+      state.tipoUbic === 'all' && state.reporte === 'all' && state.invMin === 0 &&
+      state.umbral === P.umbralAlertaCoberturaDias;
     return def ? 'nacional' : 'regional';
   }
 
+  // Cuenta cuántos filtros están activos (distintos del valor "todo seleccionado"),
+  // para el contador del botón "Filtros" en la topbar.
   function nAvanzados() {
     let n = 0;
+    if (state.regiones.size < DB.regiones.length) n++;
+    if (state.cedis.size < DB.cedis.length) n++;
+    if (state.items.size < DB.items.length) n++;
     if (state.tipoUbic !== 'all') n++;
     if (state.reporte !== 'all') n++;
     if (state.invMin > 0) n++;
+    if (state.umbral !== P.umbralAlertaCoberturaDias) n++;
     return n;
   }
 
@@ -165,7 +174,7 @@
 
   function montarMSRegion() {
     const ops = DB.regiones.map(r => ({ id: r.id, nombre: r.nombre }));
-    construirMS($('#ms-region'), 'Región (departamento)', ops, () => state.regiones, () => {
+    construirMS($('#ms-region'), 'Regional', ops, () => state.regiones, () => {
       sincronizarCedis();
       montarMSCedi();
       render();
@@ -187,8 +196,17 @@
     montarMSRegion();
     sincronizarCedis();
     montarMSCedi();
-    $('#f-items').innerHTML = DB.items.map(i =>
+    const chipsHTML = DB.items.map(i =>
       `<button type="button" class="chip chip-on" data-val="${i.id}">${i.nombre}</button>`).join('');
+    $('#f-items').innerHTML = chipsHTML;
+    // Copia del filtro de talla dentro de la vista Resumen (comparten state.items)
+    $('#f-items-edades').innerHTML = chipsHTML;
+  }
+
+  // Mantiene los chips de talla (topbar y vista Resumen) alineados con state.items
+  function sincronizarChipsTalla() {
+    ['#f-items', '#f-items-edades'].forEach(sel =>
+      $$(sel + ' .chip').forEach(c => c.classList.toggle('chip-on', state.items.has(c.dataset.val))));
   }
 
   function wireChips(sel, getSet) {
@@ -213,6 +231,11 @@
 
   function wireFiltros() {
     wireChips('#f-items', () => state.items);
+    wireChips('#f-items-edades', () => state.items);
+    $('#fe-reset').addEventListener('click', () => {
+      state.items = new Set(idsItems());
+      render();
+    });
     wireSeg('#f-ubic', 'ubic', v => state.tipoUbic = v);
     wireSeg('#f-reporte', 'rep', v => state.reporte = v);
 
@@ -221,10 +244,16 @@
       state.invMin = isNaN(v) ? 0 : v; render();
     });
 
-    $('#f-mas').addEventListener('click', () => {
-      const p = $('#filtros-avanzados');
+    $('#f-umbral').addEventListener('input', e => {
+      state.umbral = +e.target.value;
+      $('#f-umbral-val').textContent = `${state.umbral} d`;
+      render();
+    });
+
+    $('#f-toggle').addEventListener('click', () => {
+      const p = $('#filtros-panel-completo');
       p.hidden = !p.hidden;
-      $('#f-mas').classList.toggle('abierto', !p.hidden);
+      $('#f-toggle').classList.toggle('abierto', !p.hidden);
     });
     $('#f-reset').addEventListener('click', resetFiltros);
 
@@ -236,12 +265,14 @@
     sincronizarCedis();
     state.items = new Set(idsItems());
     state.tipoUbic = 'all'; state.reporte = 'all'; state.invMin = 0;
+    state.umbral = P.umbralAlertaCoberturaDias;
 
     montarMSRegion(); montarMSCedi();
-    $$('#f-items .chip').forEach(c => c.classList.add('chip-on'));
     $$('#f-ubic button').forEach(b => b.classList.toggle('seg-on', b.dataset.ubic === 'all'));
     $$('#f-reporte button').forEach(b => b.classList.toggle('seg-on', b.dataset.rep === 'all'));
     $('#f-inv-min').value = 0;
+    $('#f-umbral').value = state.umbral;
+    $('#f-umbral-val').textContent = `${state.umbral} d`;
     render();
   }
 
@@ -276,11 +307,6 @@
     $('#nivel-badge').textContent = nv === 'nacional' ? 'NACIONAL' : nv === 'regional' ? 'FILTRADO' : 'CEDI';
     $('#nivel-badge').className = 'nivel-badge nb-' + nv;
 
-    const sin = DB.meta.cedisSinReporte;
-    const badge = $('#sin-reporte-badge');
-    badge.innerHTML = `<span class="pulse"></span> ${sin.length} CEDIs sin reporte`;
-    badge.title = 'Pendientes: ' + sin.join(', ');
-
     const n = nAvanzados();
     $('#mas-count').textContent = n ? `(${n})` : '';
   }
@@ -290,12 +316,21 @@
    * ====================================================================== */
   function render() {
     renderContexto();
+    sincronizarChipsTalla();
+
+    // En Resumen el único filtro que aplica es la talla (inline en la vista):
+    // se oculta el botón de filtros generales de la topbar.
+    const enResumen = state.vista === 'edades';
+    $('#f-toggle').hidden = enResumen;
+    if (enResumen) {
+      $('#filtros-panel-completo').hidden = true;
+      $('#f-toggle').classList.remove('abierto');
+    }
+
     switch (state.vista) {
-      case 'edades':     renderEdades(); break;
-      case 'criticos':   renderAlerta1(); break;
-      case 'proyeccion': renderAlerta2(); break;
-      case 'canales':    renderCanales(); break;
-      case 'historico':  renderHistorico(); break;
+      case 'edades':  renderEdades(); break;
+      case 'tat':     renderAlerta1(); renderAlerta2(); break;
+      case 'canales': renderCanales(); break;
     }
   }
 
@@ -303,12 +338,29 @@
    *  VISTA: RESUMEN — Indicadores Generales + Detalle por Talla (REAL)
    * ====================================================================== */
   function renderEdades() {
+    // Los Indicadores Generales y el Detalle por Talla son cifras NACIONALES
+    // del informe: no existe un desglose por CEDI en la fuente real, así que
+    // no cambian con Región/CEDI/tipo de ubicación/estado de reporte/inv.
+    // mínimo — el detalle real por CEDI/tienda está en TAT y Canales.
+
     // Detalle por Talla: filas reales, filtrables por talla (los números de
     // cada fila no cambian, solo se muestran/ocultan — el total sí se ajusta
     // al subconjunto visible).
     const filas = DB.items.filter(i => state.items.has(i.id)).slice().sort((a, b) => (b.dias ?? -1) - (a.dias ?? -1));
-    const totInv = filas.reduce((a, b) => a + b.inventario, 0);
+    const sinFiltroTalla = filas.length === DB.items.length;
+    const ajuste = DB.ajusteTallaSinDesglosar;
+    const totInv = filas.reduce((a, b) => a + b.inventario, 0) + (sinFiltroTalla ? ajuste.inventario : 0);
     const totVenta = filas.reduce((a, b) => a + b.venta, 0);
+
+    // Fila anexa bajo el TOTAL: "Huevo sin clasificar" NO pertenece al desglose
+    // por talla (el informe lo excluye — no tiene venta ni días por talla), por
+    // eso va pegada a la tabla pero con estilo propio y sin sumar al TOTAL.
+    const filaSinClasificar = `<tr class="row-anexa">
+      <td>Huevo sin clasificar <span class="muted">· fuera del desglose por talla</span></td>
+      <td class="num">${fmt(DB.meta.huevoSinClasificar)}</td>
+      <td class="num">—</td>
+      <td class="num">—</td>
+    </tr>`;
 
     $('#tabla-talla-detalle tbody').innerHTML = filas.map(t => `<tr>
       <td><strong>${t.nombre}</strong></td>
@@ -316,157 +368,45 @@
       <td class="num">${fmt(t.venta)}</td>
       <td class="num">${t.dias == null ? '<span class="muted">—</span>' : `<span class="badge b-${zonaDe(t.dias)}">${fmtDias(t.dias)}</span>`}</td>
     </tr>`).join('') + (filas.length
-      ? `<tr class="row-total"><td><strong>TOTAL${filas.length < DB.items.length ? ' (filtrado)' : ''}</strong></td><td class="num"><strong>${fmt(totInv)}</strong></td><td class="num"><strong>${fmt(totVenta)}</strong></td><td class="num">—</td></tr>`
+      ? `<tr class="row-total"><td><strong>TOTAL${filas.length < DB.items.length ? ' (filtrado)' : ''}</strong></td><td class="num"><strong>${fmt(totInv)}</strong></td><td class="num"><strong>${fmt(totVenta)}</strong></td><td class="num">—</td></tr>` + filaSinClasificar
       : '<tr><td colspan="4" class="empty">Sin tallas seleccionadas</td></tr>');
 
-    // "Días de inventario por talla" — mismos datos de la tabla, en gráfica
-    Charts.barrasH($('#chart-dias-talla'),
-      filas.filter(t => t.dias != null).map(t => ({ label: t.nombre, valor: t.dias, color: zonaDe(t.dias) }))
-        .sort((a, b) => b.valor - a.valor),
-      { labelW: 130 });
-
-    renderAlertasReales();
-    renderRecomendacionesReales();
-  }
-
-  // Alertas basadas en cifras reales: tallas en zona roja del semáforo visual
-  // (≥6 d), tallas sin venta, y CEDIs sin reporte (hecho operativo conocido,
-  // ver docs/CONTEXTO.md).
-  function renderAlertasReales() {
-    const alertas = [];
-    DB.meta.cedisSinReporte.forEach(c =>
-      alertas.push({ tipo: 'pend', icon: '⏰', txt: `<strong>${c}</strong> no reporta edades de forma regular (ver docs/CONTEXTO.md).` }));
-    DB.items.filter(i => i.dias == null).forEach(i =>
-      alertas.push({ tipo: 'pend', icon: '❔', txt: `<strong>${i.nombre}</strong> sin venta en el periodo del informe — días de inventario no calculable.` }));
-    DB.items.filter(i => i.dias != null && i.dias >= P.umbralEdadCriticaDias).sort((a, b) => b.dias - a.dias).forEach(i =>
-      alertas.push({ tipo: 'critico', icon: '🚨', txt: `<strong>${i.nombre}</strong>: ${i.dias} días de inventario (zona roja, ≥ 6 días).` }));
-
-    $('#panel-alertas').innerHTML = alertas.length
-      ? alertas.map(a => `<div class="alerta a-${a.tipo}"><span>${a.icon}</span><p>${a.txt}</p></div>`).join('')
-      : '<div class="empty">Sin alertas en los datos reales disponibles ✅</div>';
-  }
-
-  function renderRecomendacionesReales() {
-    const recs = [];
-    DB.items.filter(i => i.dias != null && i.dias >= P.umbralEdadCriticaDias).sort((a, b) => b.dias - a.dias).slice(0, 4).forEach(i => {
-      recs.push({ prio: i.dias >= 9 ? 'alta' : 'media', titulo: i.nombre,
-        texto: `${i.dias} días de inventario a nivel compañía. Redirigir a <strong>Mayorista</strong> o activar promoción para acelerar rotación.` });
-    });
-    const a1 = DB.tiendasTAT.filter(t => t.alerta === 1).length;
-    const a2 = DB.tiendasTAT.filter(t => t.alerta === 2 && t.aGestionar > 0).length;
-    if (a1) recs.push({ prio: 'media', titulo: `${a1} tiendas TAT en Alerta 1`, texto: `Sobre-inventario (cobertura ≥ 5 días). Ver detalle en la vista <strong>Alerta 1</strong>.` });
-    if (a2) recs.push({ prio: 'media', titulo: `${a2} tiendas TAT en Alerta 2`, texto: `Riesgo de frescura (PEPS). Ver detalle en la vista <strong>Alerta 2</strong>.` });
-
-    const orden = { alta: 0, media: 1, baja: 2 };
-    recs.sort((a, b) => orden[a.prio] - orden[b.prio]);
-    $('#panel-ia-edades').innerHTML = recs.length
-      ? recs.map(r => `<div class="rec rec-${r.prio}"><div class="rec-head"><span class="rec-prio">${r.prio.toUpperCase()}</span><strong>${r.titulo}</strong></div><p>${r.texto}</p></div>`).join('')
-      : '<div class="empty">Sin recomendaciones: inventario saludable ✅</div>';
-  }
-
-  /* =========================================================================
-   *  Filtro compartido "Regional TAT" (chips) para las vistas Alerta 1/2
-   * ====================================================================== */
-  function chipsRegionalTAT(set) {
-    return DB.regionalesTAT.map(r =>
-      `<button type="button" class="chip ${set.has(r) ? 'chip-on' : ''}" data-val="${r}">${r}</button>`).join('');
-  }
-  function wireChipsRegionalTAT(id, set, onChange) {
-    $(id).addEventListener('click', e => {
-      const b = e.target.closest('[data-val]'); if (!b) return;
-      const r = b.dataset.val;
-      if (set.has(r)) { set.delete(r); b.classList.remove('chip-on'); }
-      else { set.add(r); b.classList.add('chip-on'); }
-      onChange();
-    });
+    const notaAjuste = $('#nota-ajuste-talla');
+    if (notaAjuste) {
+      notaAjuste.hidden = !sinFiltroTalla;
+      notaAjuste.innerHTML = `El TOTAL incluye <strong>${fmt(ajuste.inventario)}</strong> unidades de ` +
+        `<strong>${ajuste.nombre}</strong>, una categoría real que no viene desglosada por talla en el ` +
+        `informe (no se conoce su venta día, por eso no aparece como fila propia).`;
+    }
   }
 
   /* =========================================================================
    *  VISTA: ALERTA 1 — Sobre-inventario por tienda TAT (cobertura ≥ umbral)
    * ====================================================================== */
   function renderAlerta1() {
-    if (!$('#fa1-umbral')) initPanelAlerta1();
+    // El único control propio de Alerta 1 es el ordenamiento por clic en los
+    // encabezados de la tabla (el umbral de cobertura vive en 🔍 Filtros).
+    const thead = $('#tabla-criticos thead');
+    if (!thead.dataset.wired) {
+      thead.addEventListener('click', e => {
+        const th = e.target.closest('th[data-sort]'); if (!th) return;
+        const sc = stateAlerta1, col = th.dataset.sort;
+        if (sc.sortCol === col) sc.sortDir = sc.sortDir === 'desc' ? 'asc' : 'desc';
+        else { sc.sortCol = col; sc.sortDir = 'desc'; }
+        refreshAlerta1();
+      });
+      $$('th[data-sort]', thead).forEach(th => {
+        th.title = 'Clic para ordenar por esta columna (otro clic invierte el orden)';
+      });
+      thead.dataset.wired = '1';
+    }
     refreshAlerta1();
-  }
-
-  function initPanelAlerta1() {
-    const sc = stateAlerta1;
-    const cont = $('#panel-filtros-criticos');
-    if (!cont) return;
-
-    cont.innerHTML = `
-<div class="filtros-panel">
-  <div class="filtros-panel-head">
-    <h4>🔺 Filtros de Alerta 1 — sobre-inventario</h4>
-    <span class="hint">Cobertura = inventario total ÷ venta diaria de la tienda (dato real del informe)</span>
-    <button class="btn-reset" id="fa1-reset">↺ Limpiar</button>
-  </div>
-  <div class="filtros-panel-body">
-    <div class="fc-group">
-      <label>Regional TAT</label>
-      <div class="chips" id="fa1-regional">${chipsRegionalTAT(sc.regionales)}</div>
-    </div>
-    <div class="fc-group">
-      <label>Umbral de cobertura (días)</label>
-      <div class="slider-wrap">
-        <input type="range" id="fa1-umbral" min="0" max="15" step="0.5" value="${sc.umbral}">
-        <span class="slider-val" id="fa1-umbral-val">≥ ${sc.umbral} d</span>
-      </div>
-    </div>
-    <div class="fc-group">
-      <label>Mín. unidades a gestionar</label>
-      <input type="number" id="fa1-min" class="fc-input" min="0" step="1000" value="${sc.aGestMin}">
-    </div>
-    <div class="fc-group">
-      <label>Ordenar por</label>
-      <select id="fa1-orden" class="filtro-select-sm">
-        <option value="cobertura_desc">Cobertura ↓</option>
-        <option value="cobertura_asc">Cobertura ↑</option>
-        <option value="aGestionar_desc">A gestionar ↓</option>
-        <option value="invEdad_desc">Inv. con edad ↓</option>
-        <option value="invTotal_desc">Inv. total ↓</option>
-      </select>
-    </div>
-  </div>
-</div>`;
-
-    wireChipsRegionalTAT('#fa1-regional', sc.regionales, refreshAlerta1);
-    $('#fa1-umbral').addEventListener('input', e => {
-      sc.umbral = +e.target.value;
-      $('#fa1-umbral-val').textContent = `≥ ${sc.umbral} d`;
-      refreshAlerta1();
-    });
-    $('#fa1-min').addEventListener('input', e => { sc.aGestMin = +e.target.value || 0; refreshAlerta1(); });
-    $('#fa1-orden').value = `${sc.sortCol}_${sc.sortDir}`;
-    $('#fa1-orden').addEventListener('change', e => {
-      const v = e.target.value, i = v.lastIndexOf('_');
-      sc.sortCol = v.slice(0, i); sc.sortDir = v.slice(i + 1);
-      refreshAlerta1();
-    });
-    $('#fa1-reset').addEventListener('click', () => {
-      sc.umbral = P.umbralAlertaCoberturaDias; sc.aGestMin = 0; sc.sortCol = 'cobertura'; sc.sortDir = 'desc';
-      sc.regionales = new Set(DB.regionalesTAT);
-      $('#fa1-umbral').value = sc.umbral; $('#fa1-umbral-val').textContent = `≥ ${sc.umbral} d`;
-      $('#fa1-min').value = 0; $('#fa1-orden').value = 'cobertura_desc';
-      $$('#fa1-regional .chip').forEach(c => c.classList.add('chip-on'));
-      refreshAlerta1();
-    });
-
-    $('#tabla-criticos thead').addEventListener('click', e => {
-      const th = e.target.closest('th[data-sort]'); if (!th) return;
-      const col = th.dataset.sort;
-      if (sc.sortCol === col) sc.sortDir = sc.sortDir === 'desc' ? 'asc' : 'desc';
-      else { sc.sortCol = col; sc.sortDir = 'desc'; }
-      const sel = $('#fa1-orden'), val = `${sc.sortCol}_${sc.sortDir}`;
-      if ([...sel.options].some(o => o.value === val)) sel.value = val;
-      refreshAlerta1();
-    });
   }
 
   function refreshAlerta1() {
     const sc = stateAlerta1;
-    const base = tiendasBase().filter(t => t.alerta === 1 && sc.regionales.has(t.regionalTAT));
-    let lista = base.filter(t => t.cobertura >= sc.umbral && t.aGestionar >= sc.aGestMin);
+    const base = tiendasBase().filter(t => t.alerta === 1);
+    let lista = base.filter(t => t.cobertura >= state.umbral);
 
     lista.sort((a, b) => {
       let d = 0;
@@ -480,10 +420,8 @@
     const totalGestionar = lista.reduce((a, b) => a + b.aGestionar, 0);
     const totalInv = lista.reduce((a, b) => a + b.invTotal, 0);
     kpis('#kpis-criticos', [
-      { label: 'Tiendas en Alerta 1', valor: lista.length, sub: `de ${base.length} en el alcance`, icon: '🔺', clase: lista.length ? 'z-rojo' : 'z-verde' },
+      { label: 'TAT en Alerta 1', valor: lista.length, sub: `de ${base.length} en el alcance`, icon: '🔺', clase: lista.length ? 'z-rojo' : 'z-verde' },
       { label: 'Unidades a gestionar', valor: fmt(totalGestionar), sub: 'sobre-inventario ≥ umbral', icon: '🥚', clase: 'z-rojo' },
-      { label: 'Inventario total en la alerta', valor: fmt(totalInv), sub: 'informe pág. 3', icon: '📦' },
-      { label: 'Umbral activo', valor: `≥ ${sc.umbral} d`, sub: 'cobertura (independiente del semáforo)', icon: '📏' },
     ]);
 
     const porRegional = DB.regionalesTAT.map(r => ({ nombre: r, valor: lista.filter(x => x.regionalTAT === r).reduce((a, b) => a + b.aGestionar, 0) }));
@@ -494,7 +432,7 @@
 
     $$('#tabla-criticos th[data-sort]').forEach(th => {
       const col = th.dataset.sort, ind = th.querySelector('.sort-ind');
-      if (ind) ind.textContent = col === sc.sortCol ? (sc.sortDir === 'desc' ? ' ▼' : ' ▲') : ' ↕';
+      if (ind) ind.textContent = col === sc.sortCol ? (sc.sortDir === 'desc' ? '▼' : '▲') : '↕';
       th.classList.toggle('th-sorted', col === sc.sortCol);
     });
 
@@ -515,16 +453,13 @@
     </tr>` : '';
     $('#tabla-criticos tbody').innerHTML = (rows ||
       '<tr><td colspan="6" class="empty">✅ Sin tiendas en Alerta 1 para los filtros actuales</td></tr>') + totalRow;
-
-    $('#alerta1-nota-alerta3').textContent = DB.notaAlerta3;
-    renderRecomendacionesTAT('#panel-ia-criticos', tiendasBase().filter(t => sc.regionales.has(t.regionalTAT)), 8);
   }
 
   /* =========================================================================
    *  VISTA: ALERTA 2 — Inventario a gestionar por frescura (PEPS, cobertura <5 d)
    * ====================================================================== */
   function renderAlerta2() {
-    if (!$('#fa2-regional')) initPanelAlerta2();
+    if (!$('#fa2-dias')) initPanelAlerta2();
     refreshAlerta2();
   }
 
@@ -533,118 +468,154 @@
     const cont = $('#panel-filtros-proyeccion');
     if (!cont) return;
 
+    // Slider de tiempo con la misma mecánica que el umbral de Alerta 1: el tope
+    // del rango (5 d, el límite real de Alerta 2) equivale a "sin límite".
+    const MAX_SLIDER = P.umbralAlertaCoberturaDias;
+    const valorSlider = sc.diasVenderMax == null ? MAX_SLIDER : sc.diasVenderMax;
+
     cont.innerHTML = `
 <div class="filtros-panel">
   <div class="filtros-panel-head">
     <h4>🍳 Filtros de Alerta 2 — frescura PEPS</h4>
-    <span class="hint">"Días a vender" = unidades en riesgo ÷ venta diaria de la referencia (dato real del informe)</span>
+    <span class="hint">"Días a vender" = unidades en riesgo ÷ venta diaria (dato real del informe). Aplica a tiendas y referencias</span>
     <button class="btn-reset" id="fa2-reset">↺ Limpiar</button>
   </div>
   <div class="filtros-panel-body">
     <div class="fc-group">
-      <label>Regional TAT</label>
-      <div class="chips" id="fa2-regional">${chipsRegionalTAT(sc.regionales)}</div>
-    </div>
-    <div class="fc-group">
       <label>Máx. días a vender</label>
-      <input type="number" id="fa2-dias" class="fc-input" min="0" step="0.5" placeholder="Sin límite">
+      <div class="slider-wrap">
+        <input type="range" id="fa2-dias" min="0" max="${MAX_SLIDER}" step="0.5" value="${valorSlider}">
+        <span class="slider-val" id="fa2-dias-val"></span>
+      </div>
     </div>
   </div>
 </div>`;
 
-    wireChipsRegionalTAT('#fa2-regional', sc.regionales, refreshAlerta2);
+    const pintarValor = () => {
+      $('#fa2-dias-val').textContent = sc.diasVenderMax == null ? 'Sin límite' : `≤ ${sc.diasVenderMax} d`;
+    };
+    pintarValor();
+
     $('#fa2-dias').addEventListener('input', e => {
-      const v = e.target.value;
-      sc.diasVenderMax = v === '' ? null : +v;
+      const v = +e.target.value;
+      sc.diasVenderMax = v >= MAX_SLIDER ? null : v;
+      pintarValor();
       refreshAlerta2();
     });
     $('#fa2-reset').addEventListener('click', () => {
-      sc.regionales = new Set(DB.regionalesTAT);
       sc.diasVenderMax = null;
-      $$('#fa2-regional .chip').forEach(c => c.classList.add('chip-on'));
-      $('#fa2-dias').value = '';
+      $('#fa2-dias').value = MAX_SLIDER;
+      pintarValor();
       refreshAlerta2();
     });
   }
 
   function badgeDiasAVender(dias) {
     if (dias == null) return '<span class="badge b-gris">—</span>';
-    return `<span class="badge ${dias > 1 ? 'b-rojo' : 'b-verde'}">${fmtDias(dias)}</span>`;
+    return `<span class="badge ${dias > 1 ? 'b-rojo' : 'b-naranja'}">${fmtDias(dias)}</span>`;
   }
 
   function refreshAlerta2() {
     const sc = stateAlerta2;
-    const base = tiendasBase().filter(t => t.alerta === 2 && sc.regionales.has(t.regionalTAT));
+    const todas = tiendasBase();
+    const base = todas.filter(t => t.alerta === 2);
 
-    const refsFiltradas = [];
-    base.forEach(t => {
-      t.referencias.filter(r => state.items.has(r.itemId)).forEach(r => {
-        if (sc.diasVenderMax != null && (r.diasAVender == null || r.diasAVender > sc.diasVenderMax)) return;
-        refsFiltradas.push({ tienda: t.nombre, regional: t.regionalTAT, ...r });
+    // Umbral de cobertura GLOBAL (🔍 Filtros): es el corte entre las dos alertas.
+    // Por debajo del corte quedan las tiendas de Alerta 2 con "días a vender" <
+    // umbral (las sin dato se conservan: el informe las clasifica en Alerta 2
+    // igual) MÁS las tiendas del informe en Alerta 1 cuya cobertura cae bajo el
+    // umbral — al subirlo, salen del bloque de arriba y entran a este.
+    const migradas = todas.filter(t => t.alerta === 1 && t.cobertura < state.umbral);
+    const bajoUmbral = base
+      .filter(t => t.diasAVender == null || t.diasAVender < state.umbral)
+      .concat(migradas);
+
+    // El slider de tiempo propio de Alerta 2 refina a nivel de tienda: con un
+    // máximo activo se ocultan las tiendas cuyos "días a vender" lo superan o
+    // no existen en el informe.
+    const lista = (sc.diasVenderMax == null ? bajoUmbral :
+      bajoUmbral.filter(t => t.diasAVender != null && t.diasAVender <= sc.diasVenderMax))
+      // Agrupadas por regional, en el mismo orden del filtro (Occidente ->
+      // Costa Oriente -> Centro); dentro de cada regional, de mayor a menor
+      // inventario a gestionar.
+      .slice().sort((a, b) => {
+        const orden = DB.regiones.findIndex(r => r.id === a.regionId) -
+                      DB.regiones.findIndex(r => r.id === b.regionId);
+        return orden !== 0 ? orden : b.aGestionar - a.aGestionar;
       });
+
+    // Referencias en riesgo por tienda (respetando talla + máx. días a vender)
+    const refsPorTienda = {};
+    const refsFiltradas = [];
+    lista.forEach(t => {
+      const refs = t.referencias.filter(r => state.items.has(r.itemId)).filter(r => {
+        if (sc.diasVenderMax != null && (r.diasAVender == null || r.diasAVender > sc.diasVenderMax)) return false;
+        return true;
+      });
+      refsPorTienda[t.nombre] = refs;
+      refs.forEach(r => refsFiltradas.push({ tienda: t.nombre, ...r }));
     });
 
-    const filtroActivo = sc.regionales.size < DB.regionalesTAT.length || sc.diasVenderMax != null || state.items.size < DB.items.length ||
+    const filtroActivo = sc.diasVenderMax != null || state.items.size < DB.items.length ||
       state.regiones.size < DB.regiones.length || state.cedis.size < DB.cedis.length;
     const enAlcanceTiendas = new Set(refsFiltradas.map(r => r.tienda)).size;
-    const enAlcanceUnidades = refsFiltradas.reduce((a, b) => a + b.enRiesgo, 0);
+    const enAlcanceUnidades = refsFiltradas.reduce((a, b) => a + (b.enRiesgo || 0), 0);
 
     const R = DB.alerta2Resumen;
     kpis('#kpis-proyeccion', [
       { label: 'TAT en riesgo (informe)', valor: `${R.tatEnRiesgo}`, sub: `de ${R.deTotalAlerta2} en Alerta 2`, icon: '🍳', clase: 'z-rojo' },
       { label: 'Referencias únicas (informe)', valor: R.referenciasUnicas, sub: 'según el informe real', icon: '🏷️' },
-      { label: 'Unidades en riesgo (informe)', valor: fmt(R.unidadesEnRiesgo), sub: 'a acelerar rotación', icon: '⏳', clase: 'z-rojo' },
-      { label: 'Total a gestionar (Alerta 2)', valor: fmt(base.reduce((a, b) => a + b.aGestionar, 0)), sub: `${base.length} tiendas en el alcance`, icon: '📦' },
-      { label: 'Inventario total en la alerta', valor: fmt(base.reduce((a, b) => a + b.invTotal, 0)), sub: 'informe pág. 3', icon: '🏬' },
+      { label: 'Total a gestionar (Alerta 2)', valor: fmt(lista.reduce((a, b) => a + b.aGestionar, 0)), sub: `${lista.length} tiendas en el alcance`, icon: '📦' },
     ]);
-    $('#alerta2-nota').innerHTML = `Los 3 primeros KPIs son el encabezado literal del informe (no cambian con los filtros). ` +
+    $('#alerta2-nota').innerHTML = `Los 2 primeros KPIs son el encabezado literal del informe (no cambian con los filtros). ` +
       `<strong>En el alcance filtrado actual:</strong> ${enAlcanceTiendas} tiendas · ${refsFiltradas.length} referencias · ${fmt(enAlcanceUnidades)} unidades en riesgo` +
       (filtroActivo ? '' : ' (sin filtros activos)') + '.';
 
-    const rowsTiendas = base.map(t => `<tr>
-      <td><span class="tag">${t.regionalTAT}</span></td>
-      <td><strong>${t.nombre}</strong></td>
-      <td class="num">${fmt(t.invConEdad)}</td>
-      <td class="num">${fmt(t.ventaDia)}</td>
-      <td class="num"><strong class="txt-rojo">${fmt(t.aGestionar)}</strong></td>
-      <td class="num">${badgeDiasAVender(t.diasAVender)}</td>
-      <td class="num">${fmt(t.invTotal)}</td>
-    </tr>`).join('');
-    const totalRow2 = base.length ? `<tr class="row-total">
-      <td colspan="2"><strong>TOTAL Alerta 2</strong></td>
-      <td class="num"><strong>${fmt(base.reduce((a, b) => a + b.invConEdad, 0))}</strong></td>
-      <td class="num"><strong>${fmt(base.reduce((a, b) => a + b.ventaDia, 0))}</strong></td>
-      <td class="num"><strong>${fmt(base.reduce((a, b) => a + b.aGestionar, 0))}</strong></td>
-      <td class="num">—</td>
-      <td class="num"><strong>${fmt(base.reduce((a, b) => a + b.invTotal, 0))}</strong></td>
-    </tr>` : '';
-    $('#tabla-alerta2 tbody').innerHTML = (rowsTiendas ||
-      '<tr><td colspan="7" class="empty">✅ Ninguna tienda en Alerta 2 con los filtros actuales</td></tr>') + totalRow2;
+    // Cada tienda muestra, fija justo debajo de su fila, su propia subtabla de
+    // referencias en riesgo (ya no es desplegable).
+    const badgeEdadMax = e => e == null ? '<span class="badge b-gris">—</span>'
+      : `<span class="badge b-${e >= P.umbralEdadCriticaDias ? 'rojo' : 'verde'}">${fmtDias(e)}</span>`;
 
-    const porTienda = {};
-    refsFiltradas.forEach(r => { (porTienda[r.tienda] = porTienda[r.tienda] || []).push(r); });
-    const bloques = Object.entries(porTienda).map(([tienda, refs]) => {
-      const total = refs.reduce((a, b) => a + b.enRiesgo, 0);
-      const regional = refs[0].regional;
-      const filas = refs.slice().sort((a, b) => b.enRiesgo - a.enRiesgo).map(r => `<tr>
-        <td>${r.nombre}</td>
+    const rowsTiendas = lista.map(t => {
+      const refs = refsPorTienda[t.nombre] || [];
+      const filaPrincipal = `<tr class="fila-tienda-alerta2" data-tienda="${t.nombre}">
+        <td><span class="tag">${t.regionalTAT}</span></td>
+        <td><strong>${t.nombre}</strong>${t.alerta === 1
+          ? `<br><span class="muted">cobertura ${t.cobertura.toFixed(1)} d — entra por el umbral actual (${state.umbral} d)</span>` : ''}</td>
+        <td class="num">${fmt(t.invConEdad)}</td>
+        <td class="num">${fmt(t.ventaDia)}</td>
+        <td class="num"><strong class="txt-rojo">${fmt(t.aGestionar)}</strong></td>
+        <td class="num">${badgeDiasAVender(t.diasAVender)}</td>
+        <td class="num">${fmt(t.invTotal)}</td>
+      </tr>`;
+
+      const filasRef = refs.slice().sort((a, b) => (b.enRiesgo || 0) - (a.enRiesgo || 0)).map(r => `<tr>
+        <td>${r.nombre}${r.deVentas ? ' <span class="muted" title="Venta día tomada de ventas-1.xlsx (el informe la dejaba vacía o en 0)">· ventas reales</span>' : ''}</td>
         <td class="num">${fmt(r.invActual)}</td>
         <td class="num">${fmt(r.ventaDia)}</td>
         <td class="num"><strong class="txt-rojo">${fmt(r.enRiesgo)}</strong></td>
         <td class="num">${badgeDiasAVender(r.diasAVender)}</td>
+        <td class="num">${badgeEdadMax(r.edadMax)}</td>
       </tr>`).join('');
-      return `<div class="card">
-        <div class="card-head"><h3>${tienda}</h3><span class="hint">${regional} · ${refs.length} referencias en riesgo · total ${fmt(total)} und</span></div>
-        <div class="tabla-wrap"><table>
-          <thead><tr><th>Referencia</th><th class="num">Inv. actual</th><th class="num">Venta ref. (día)</th><th class="num">Unidades en riesgo</th><th class="num">Días a vender</th></tr></thead>
-          <tbody>${filas}</tbody>
-        </table></div>
-      </div>`;
+      const subContenido = refs.length
+        ? `<table><thead><tr><th>Referencia</th><th class="num">Inv. actual</th><th class="num">Venta ref. (día)</th><th class="num">Unidades en riesgo</th><th class="num">Días a vender</th><th class="num">Edad máx. (d)</th></tr></thead><tbody>${filasRef}</tbody></table>`
+        : '<div class="empty">El informe no trae detalle por referencia para esta tienda</div>';
+      const filaDetalle = `<tr class="fila-detalle-alerta2" data-tienda-detalle="${t.nombre}">
+        <td colspan="7"><div class="subtabla-wrap">${subContenido}</div></td>
+      </tr>`;
+      return filaPrincipal + filaDetalle;
     }).join('');
-    $('#detalle-referencias-riesgo').innerHTML = bloques ||
-      '<div class="empty">Sin referencias en riesgo para los filtros actuales (Cartagena y Sincelejo no traen detalle por referencia en el informe) ✅</div>';
 
-    renderRecomendacionesTAT('#panel-ia-proyeccion', base, 8);
+    const totalRow2 = lista.length ? `<tr class="row-total">
+      <td colspan="2"><strong>TOTAL Alerta 2</strong></td>
+      <td class="num"><strong>${fmt(lista.reduce((a, b) => a + b.invConEdad, 0))}</strong></td>
+      <td class="num"><strong>${fmt(lista.reduce((a, b) => a + b.ventaDia, 0))}</strong></td>
+      <td class="num"><strong>${fmt(lista.reduce((a, b) => a + b.aGestionar, 0))}</strong></td>
+      <td class="num">—</td>
+      <td class="num"><strong>${fmt(lista.reduce((a, b) => a + b.invTotal, 0))}</strong></td>
+    </tr>` : '';
+    $('#tabla-alerta2 tbody').innerHTML = (rowsTiendas ||
+      '<tr><td colspan="7" class="empty">✅ Ninguna tienda en Alerta 2 con los filtros actuales</td></tr>') + totalRow2;
   }
 
   /* =========================================================================
@@ -699,80 +670,23 @@
 
     $('#canal-contenido').innerHTML = `
       <p class="nota">Las tiendas TAT son <strong>clientes</strong>: solo registran <strong>ventas</strong>. La
-        <strong>Regional TAT</strong> (Occidente / Costa Oriente / Centro) es la agrupación comercial del
-        informe real — distinta del departamento geográfico. La tabla regional y la de tiendas vienen de
-        secciones distintas del informe y no se fuerzan a coincidir entre sí (ver docs/CONTEXTO.md sección 11).</p>
+        <strong>Regional</strong> (filtro de arriba) es la agrupación comercial real del informe
+        (Occidente / Costa Oriente / Centro). La tabla regional y la de tiendas vienen de secciones
+        distintas del informe y no se fuerzan a coincidir entre sí (ver docs/CONTEXTO.md sección 11).</p>
       <div class="card card-wide">
-        <div class="card-head"><h3>Días de Inventario TAT por Regional</h3><span class="hint">Inventario "CARTON VERDE CANASTA" ÷ venta diaria promedio</span></div>
+        <div class="card-head"><h3>Días de Inventario TAT por Regional</h3><span class="hint">🔒 Cifra fija del informe — no cambia con Región/CEDI/talla/etc.</span></div>
         <div class="tabla-wrap"><table>
           <thead><tr><th>Regional</th><th class="num">Inventario TAT</th><th class="num">Venta día</th><th class="num">Días de inventario</th></tr></thead>
           <tbody>${filasRegional}<tr class="row-total"><td><strong>TOTAL TAT</strong></td><td class="num"><strong>${fmt(T.inv)}</strong></td><td class="num"><strong>${fmt(T.venta)}</strong></td><td class="num"><strong>${fmtDias(T.dias)}</strong></td></tr></tbody>
         </table></div>
       </div>
       <div class="card card-wide">
-        <div class="card-head"><h3>🏪 Tiendas TAT</h3><span class="hint">Alerta 1 muestra cobertura (días) · Alerta 2 muestra días a vender (PEPS)</span></div>
+        <div class="card-head"><h3>🏪 Tiendas TAT</h3><span class="hint">Esta tabla SÍ responde a los filtros. Alerta 1 muestra cobertura (días) · Alerta 2 muestra días a vender (PEPS)</span></div>
         <div class="tabla-wrap"><table>
           <thead><tr><th>Regional</th><th>Tienda</th><th class="num">Venta/día</th><th class="num">Inv. total</th><th class="num">Cobertura / días a vender</th><th>Estado</th></tr></thead>
           <tbody>${filasTiendas || '<tr><td colspan="6" class="empty">Sin tiendas TAT en el alcance actual</td></tr>'}</tbody>
         </table></div>
-      </div>
-      ${panelIAHTML('panel-ia-canal')}`;
-    renderRecomendacionesTAT('#panel-ia-canal', tiendas, 8);
-  }
-
-  function panelIAHTML(id) {
-    return `<div class="card">
-      <div class="card-head"><h3>🤖 Recomendaciones IA <span class="live">● en vivo</span></h3><span class="hint">Días bajos y críticos del canal</span></div>
-      <div class="lista-grid" id="${id}"></div>
-    </div>`;
-  }
-
-  /* Recomendaciones a partir de tiendas TAT reales (Alerta 1 / Alerta 2) */
-  function generarRecomendacionesTAT(tiendas) {
-    const recs = [];
-
-    tiendas.filter(t => t.alerta === 1).sort((a, b) => b.aGestionar - a.aGestionar).slice(0, 5).forEach(t => {
-      recs.push({
-        prio: t.aGestionar > 150000 ? 'alta' : 'media',
-        titulo: `${t.nombre} · ${t.regionalTAT}`,
-        texto: `Alerta 1 — cobertura de <strong>${t.cobertura.toFixed(1)} días</strong>. ` +
-          `${fmt(t.aGestionar)} unidades a gestionar: frenar despacho y acelerar rotación.`,
-      });
-    });
-
-    tiendas.filter(t => t.alerta === 2 && t.aGestionar > 0).sort((a, b) => b.aGestionar - a.aGestionar).slice(0, 5).forEach(t => {
-      recs.push({
-        prio: (t.diasAVender != null && t.diasAVender > 1) ? 'alta' : 'media',
-        titulo: `${t.nombre} · ${t.regionalTAT}`,
-        texto: `Alerta 2 — frescura PEPS: ${fmt(t.aGestionar)} unidades en riesgo de superar ` +
-          `${P.umbralAlertaCoberturaDias} días${t.diasAVender != null ? ` (≈${t.diasAVender} d para liquidarse)` : ''}. ` +
-          `Priorizar despacho del lote más antiguo.`,
-      });
-    });
-
-    const orden = { alta: 0, media: 1, baja: 2 };
-    return recs.sort((a, b) => orden[a.prio] - orden[b.prio]);
-  }
-
-  function renderRecomendacionesTAT(sel, tiendas, limite) {
-    const recs = generarRecomendacionesTAT(tiendas).slice(0, limite);
-    const cont = $(sel);
-    cont.innerHTML = recs.length
-      ? recs.map(r => `<div class="rec rec-${r.prio}">
-          <div class="rec-head"><span class="rec-prio">${r.prio.toUpperCase()}</span><strong>${r.titulo}</strong></div>
-          <p>${r.texto}</p></div>`).join('')
-      : '<div class="empty">Sin recomendaciones: tiendas TAT en rango saludable ✅</div>';
-  }
-
-  /* =========================================================================
-   *  VISTA: HISTÓRICO (90 días) — demostrativa, ver nota en la vista
-   * ====================================================================== */
-  function renderHistorico() {
-    const h = DB.historia, et = f => f.slice(5);
-    Charts.linea($('#chart-hist-inv'), [{ nombre: 'Inventario', color: 'azul', area: true, puntos: h.map(d => ({ x: et(d.fecha), y: d.inventario })) }]);
-    Charts.linea($('#chart-hist-dias'), [{ nombre: 'Días de inventario', color: 'ambar', area: true, puntos: h.map(d => ({ x: et(d.fecha), y: d.diasInventario })) }], { desdeCero: true });
-    Charts.linea($('#chart-hist-critico'), [{ nombre: '% edad crítica', color: 'rojo', area: true, puntos: h.map(d => ({ x: et(d.fecha), y: d.pctCritico })) }], { desdeCero: true });
-    Charts.linea($('#chart-hist-venta'), [{ nombre: 'Venta diaria', color: 'verde', area: true, puntos: h.map(d => ({ x: et(d.fecha), y: d.ventaDia })) }]);
+      </div>`;
   }
 
   /* --- Helpers UI --------------------------------------------------------- */
@@ -795,9 +709,10 @@
     $('#meta-corte').textContent = DB.meta.fechaCorte;
 
     // Indicadores generales de TODA LA COMPAÑÍA (informe real, no varían con filtros)
+    // "Huevo sin clasificar" no va aquí: se muestra como fila anexa bajo el
+    // TOTAL del Detalle por Talla (está excluido de ese desglose).
     kpis('#kpis-compania', [
       { label: 'Inventario total compañía', valor: fmt(DB.meta.inventarioTotalCompania), sub: 'todas las categorías', icon: '🏢' },
-      { label: 'Huevo sin clasificar', valor: fmt(DB.meta.huevoSinClasificar), sub: 'excluido del detalle por talla', icon: '❔', clase: 'z-gris' },
       { label: 'Días de inventario (global)', valor: DB.meta.diasInventarioGlobal.toFixed(1) + ' d', sub: 'toda la compañía', icon: '📅', clase: COLOR_CLASE[zonaDe(DB.meta.diasInventarioGlobal)] },
     ]);
 

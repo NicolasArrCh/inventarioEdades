@@ -272,6 +272,38 @@ datos que eventualmente lo alimentarán:
 > conectarse a las mismas fuentes: no asumir números "oficiales" por tienda/CEDI hasta tener el
 > maestro de tiendas.
 
+### 11.2 Investigación web — Regional real y distribución de CEDIs (2026-07-01)
+
+Se investigó en la web cómo Huevos Kikes / Incubadora Santander gestiona sus regionales y
+distribuye sus CEDIs, para no seguir usando el catálogo de 15 departamentos (invención propia sin
+confirmar, usado hasta esta fecha como filtro "Región"). Hallazgos:
+
+- **Huevos Kikes no publica** en su web, LinkedIn, prensa ni ofertas de empleo los nombres de sus
+  zonas/regionales comerciales. No hay fuente externa que confirme "Occidente / Costa Oriente /
+  Centro" como nomenclatura oficial de la empresa — esos nombres solo se conocen por las fuentes
+  internas (informe PDF y `ventas-1.xlsx`).
+- Sí hay dos cifras **oficiales confirmadas** en huevoskikes.com: **14 CEDIs** y **16 ciudades con
+  presencia comercial** (sin nombrarlas). Estas dos cifras coinciden exactamente con la geografía
+  ya usada en este dashboard: 14 CEDIs reales (Occidente 6 + Costa Oriente 6 + Centro 2) + Caloto
+  y Pereira = 16 ciudades en total.
+- El patrón de nomenclatura "Costa / Occidente / Centro / Centro Oriente" para zonas comerciales
+  **sí es una convención reconocida en el sector FMCG colombiano** (usada, con sus propios límites,
+  por Bavaria y Grupo Éxito), pero **cada empresa define sus propios límites** — no existe un
+  mapeo estándar de industria que se pueda aplicar a Huevos Kikes sin confirmación directa.
+  Conclusión: la inconsistencia de nombres de ZONA entre el extracto del 25/06 ("COSTA",
+  "CENTRO ORIENTE") y el informe del 30/06 ("COSTA ORIENTE", "CENTRO") es previsible en una
+  empresa que usa este tipo de convención de forma informal — probablemente un cambio de límites o
+  de versión entre fechas, no un error de tipeo. **Sigue pendiente de confirmar con el dueño del
+  dato en el ERP.**
+
+**Cambio aplicado en el dashboard:** el filtro "Región (departamento)" se reemplazó por
+**"Regional"**, usando la Regional real de las fuentes (Occidente / Costa Oriente / Centro) con
+sus CEDIs reales tal como aparecen en el informe. Caloto (planta) y Pereira (sin tienda TAT ni
+ZONA confirmada) quedan en un cuarto grupo explícito, **"Sin regional TAT confirmada"**, en vez de
+asignarles una regional adivinada. Con esto, el filtro de "Regional TAT" que existía por separado
+en las vistas Alerta 1/Alerta 2 quedó redundante y se eliminó — ahora hay un solo filtro de
+Regional en toda la app.
+
 ### 11.1 Dashboard con datos REALES del informe (actualizado 2026-07-01)
 
 El dashboard se reestructuró primero para *imitar la lógica* del informe real
@@ -300,6 +332,38 @@ riesgo" (pág. 4) dice literalmente 9 tiendas / 22 referencias / 1.250.738 unida
 de calidad de dato ya documentados en `pipeline/PROYECTO_TAT_MEMORIA.md`) — el dashboard muestra
 **ambos números** (el del encabezado, fijo, y el recalculado sobre el alcance filtrado) sin
 intentar reconciliarlos.
+
+**Reestructuración de menú (2026-07-01):** las vistas "Alerta 1" y "Alerta 2" del menú se
+fusionaron en una sola sección **TAT** (dos bloques en la misma vista, cada uno con su panel de
+filtros). Ambas alertas tienen filtro de tiempo tipo slider: el **"Umbral de cobertura (días)"**
+se movió del panel de Alerta 1 al panel de **filtros generales** (🔍 Filtros de la topbar) y es el
+corte que separa ambas alertas: Alerta 1 muestra tiendas con cobertura ≥ umbral; Alerta 2 muestra
+las tiendas con "días a vender" < umbral (las sin dato se conservan) **más las tiendas de Alerta 1
+cuya cobertura cae bajo el umbral** (al subirlo migran de bloque, con una nota "entra por el
+umbral actual" bajo el nombre — sus "días a vender"/referencias salen "—"/vacías porque el informe
+no las publica para Alerta 1). Además Alerta 2 tiene su slider propio "Máx. días a vender"
+(0–5 d, tope = sin límite), que refina tanto tiendas como referencias. Las subtablas de referencias de Alerta 2 dejaron de ser desplegables:
+ahora se muestran fijas debajo de cada tienda. Se agregó la columna **"Edad máx. (d)"** en las
+**subtablas de referencias** (`edadMax` en cada referencia de `DB.tiendasTAT`, no a nivel de
+tienda), calculada con la regla que definió el cliente (2026-07-01): **edad máx. = ventana de
+frescura (5 d) + "días a vender"** (p. ej. 1.3 → 6.3, 0.7 → 5.7). Las referencias sin "días a
+vender" (venta 0 o negativa) muestran "—". Antes de adoptar esta regla se verificó que la edad no
+era derivable de `ventas-1.xlsx` (venta transaccional 26–29/06 sin fecha de lote; su
+`fecha_vencimiento` es el plazo de pago de la factura, con términos de crédito 0/15/30/60 días).
+
+**Cruce con ventas-1.xlsx (2026-07-01) — huecos del informe llenados con venta real:** se validó
+que la "venta día" del informe sale de `ventas-1.xlsx` con la fórmula **unidades vendidas ÷ días
+con venta** (26, 27 y 29/06; el 28 fue domingo): TAT Cúcuta cuadra exacto a nivel tienda
+(324.958 ÷ 3 = 108.319) y por referencia (2.245 y 600). Con esa fórmula validada, y solo con
+coincidencias EXACTAS de nombre de referencia, se llenaron los huecos del informe (marcados
+`deVentas: true` en `data.js` y "· ventas reales" en la UI): (a) referencias de TAT Cartagena
+(3) y TAT Sincelejo (2, ÷2 días), que el informe dejaba sin detalle — solo venta día; su
+inventario/en riesgo no existe en el Excel → "–"; (b) TAT Bogotá Siberia, que el informe dejaba
+con venta 0 "no asignable": venta real 60.533/día → días a vender 0,5; (c) 5 referencias con
+venta 0 en el informe pero con venta real (YUMBO X20 en Montevideo/Pastó/Medellín, XL X 15 PET
+CAJA X 300 en Pasto, XL X 15 - TAT en Siberia), con "días a vender" recalculado con la fórmula
+del informe. Las 12 referencias que siguen en venta 0 NO tienen venta en el Excel (o solo con
+variantes de nombre distintas, p. ej. "- BUCAROS" vs "- BGA") — se dejaron tal cual.
 
 **Sin fuente real todavía (se muestra así, no se inventa un número):**
 - El desglose de inventario **por día de edad y por CEDI** (histograma, tabla CEDI × día) requiere

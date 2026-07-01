@@ -90,20 +90,26 @@ body {
 .nb-regional { background: #fef3c7; color: #b45309; }
 .nb-cedi     { background: #dcfce7; color: #15803d; }
 
-.sin-reporte {
-  display: flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 600;
-  color: #b45309; background: #fffbeb; border: 1px solid #fde68a;
-  padding: 6px 12px; border-radius: 20px;
+.btn-filtros {
+  border: 1px solid var(--line); background: #fff; color: var(--ink-2);
+  padding: 8px 15px; border-radius: 20px; font-size: 12.5px; font-weight: 700; cursor: pointer;
+  display: flex; align-items: center; gap: 6px; white-space: nowrap;
 }
-.pulse { width: 8px; height: 8px; border-radius: 50%; background: #f59e0b; animation: pulse 1.6s infinite; }
-@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+/* el display:flex de arriba anularía el atributo hidden sin esta regla
+   (se oculta en la vista Resumen, donde solo aplica el filtro de talla) */
+.btn-filtros[hidden] { display: none; }
+.btn-filtros:hover { background: #f8fafc; color: var(--ink); }
+.btn-filtros.abierto { background: var(--brand); color: #fff; border-color: var(--brand); }
+.btn-filtros span { font-weight: 800; }
 
-/* ===================== FILTROS ===================== */
-.filtros {
-  display: flex; gap: 14px; align-items: flex-end; flex-wrap: wrap;
-  padding: 14px 26px; background: var(--card); border-bottom: 1px solid var(--line);
+/* ===================== FILTROS (panel único desplegable) ========== */
+.filtros-panel-completo {
+  display: flex; flex-direction: column; gap: 14px;
+  padding: 16px 26px; background: var(--card); border-bottom: 1px solid var(--line);
   position: sticky; top: 69px; z-index: 15;
 }
+.filtros-panel-completo[hidden] { display: none; }
+.fpc-row { display: flex; gap: 14px; align-items: flex-end; flex-wrap: wrap; }
 .filtro { display: flex; flex-direction: column; gap: 5px; }
 .filtro label, .ms > label, .fa-group > label {
   font-size: 11px; font-weight: 600; color: var(--ink-2); text-transform: uppercase; letter-spacing: .3px;
@@ -119,13 +125,6 @@ body {
   padding: 9px 15px; border-radius: 9px; font-size: 12.5px; font-weight: 600; cursor: pointer;
 }
 .btn-reset:hover { background: #f8fafc; color: var(--ink); }
-.btn-mas {
-  margin-left: auto; border: 1px solid var(--line); background: #fff; color: var(--ink-2);
-  padding: 9px 15px; border-radius: 9px; font-size: 12.5px; font-weight: 600; cursor: pointer;
-}
-.btn-mas:hover { background: #f8fafc; color: var(--ink); }
-.btn-mas.abierto { background: var(--brand); color: #fff; border-color: var(--brand); }
-.btn-mas span { font-weight: 800; }
 
 /* --- Multi-select --- */
 .ms { display: flex; flex-direction: column; gap: 5px; position: relative; }
@@ -163,12 +162,6 @@ body {
 .ms-opt input { width: 15px; height: 15px; accent-color: var(--brand); cursor: pointer; }
 .ms-opt em { margin-left: auto; font-style: normal; color: var(--muted); font-size: 11px; }
 
-/* --- Filtros avanzados --- */
-.filtros-avanzados {
-  display: flex; gap: 22px; flex-wrap: wrap; align-items: flex-end;
-  padding: 14px 26px; background: #fbfcfe; border-bottom: 1px solid var(--line);
-  position: sticky; top: 138px; z-index: 14;
-}
 .fa-group { display: flex; flex-direction: column; gap: 6px; }
 .segmented { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
 .segmented button {
@@ -256,9 +249,10 @@ th.num { text-align: right; }
 
 /* Badges y tags */
 .badge { display: inline-block; padding: 3px 9px; border-radius: 20px; font-size: 11.5px; font-weight: 700; white-space: nowrap; }
-.b-gris  { background: #f1f5f9; color: #475569; }
-.b-verde { background: #dcfce7; color: #15803d; }
-.b-rojo  { background: #fee2e2; color: #b91c1c; }
+.b-gris   { background: #f1f5f9; color: #475569; }
+.b-verde  { background: #dcfce7; color: #15803d; }
+.b-rojo   { background: #fee2e2; color: #b91c1c; }
+.b-naranja{ background: #ffedd5; color: #c2410c; }
 .tag { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 11px; font-weight: 600; background: #eef2ff; color: #4338ca; }
 .tag-planta { background: #fef3c7; color: #b45309; }
 .tag-pend { background: #fee2e2; color: #b91c1c; }
@@ -274,6 +268,30 @@ tbody tr:hover .col-verde { background: #e7f9ee; }
 tbody tr:hover .col-rojo  { background: #fde8e8; }
 .row-total td { border-top: 2px solid var(--line); background: #f8fafc; font-weight: 600; }
 .row-total:hover td { background: #f8fafc; }
+
+/* Fila anexa: dato pegado a la tabla que NO pertenece a su desglose
+   (p. ej. "Huevo sin clasificar" bajo el TOTAL del Detalle por Talla) */
+.row-anexa td {
+  border-top: 2px dashed #cbd5e1; background: #fffbeb;
+  color: var(--ink-2); font-style: italic;
+}
+.row-anexa:hover td { background: #fffbeb; }
+
+/* Títulos de bloque dentro de la vista TAT (Alerta 1 / Alerta 2) */
+.bloque-titulo {
+  font-size: 16px; font-weight: 800; color: var(--ink);
+  margin: 26px 0 4px; padding-top: 18px; border-top: 2px solid var(--line);
+}
+.bloque-titulo:first-child { margin-top: 0; padding-top: 0; border-top: none; }
+
+/* Alerta 2: fila de tienda + subtabla de referencias fija debajo */
+.fila-tienda-alerta2 td { background: #fffbeb; }
+.fila-tienda-alerta2:hover td { background: #fff7ed; }
+.fila-detalle-alerta2 td { padding: 0 12px 16px 32px; background: #fbfcfe; border-bottom: 1px solid #f1f5f9; }
+.fila-detalle-alerta2:hover td { background: #fbfcfe; }
+.subtabla-wrap table { background: #fff; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.subtabla-wrap thead th { background: #f1f5f9; }
+.subtabla-wrap .empty { padding: 14px; }
 
 /* Minibar (mezcla de edades en tabla) */
 .minibar { display: flex; height: 16px; width: 160px; border-radius: 5px; overflow: hidden; background: #f1f5f9; }
@@ -323,7 +341,7 @@ tbody tr:hover .col-rojo  { background: #fde8e8; }
   .sidebar-foot { display: none; }
 
   /* Sin sticky para evitar solapamientos al apilar */
-  .topbar, .filtros, .filtros-avanzados { position: static; top: auto; }
+  .topbar, .filtros-panel-completo { position: static; top: auto; }
 
   .grid-2 { grid-template-columns: 1fr; }
 }
@@ -333,11 +351,11 @@ tbody tr:hover .col-rojo  { background: #fde8e8; }
   .topbar { flex-wrap: wrap; gap: 10px; padding: 14px; }
   .topbar-left h1 { font-size: 17px; }
   .topbar-right { width: 100%; flex-wrap: wrap; }
-  .filtros, .filtros-avanzados, .contenido { padding-left: 14px; padding-right: 14px; }
-  .filtros { gap: 12px; }
+  .filtros-panel-completo, .contenido { padding-left: 14px; padding-right: 14px; }
+  .fpc-row { gap: 12px; }
   .ms, .ms-btn { width: 100%; min-width: 0; }
   .filtro-chips { width: 100%; }
-  .btn-mas, .btn-reset { flex: 1; text-align: center; }
+  .btn-reset { flex: 1; text-align: center; }
   .kpi-valor { font-size: 22px; }
   .subtab { padding: 8px 12px; font-size: 12.5px; }
   .donut-box { justify-content: center; }
@@ -353,7 +371,7 @@ tbody tr:hover .col-rojo  { background: #fde8e8; }
   .lista-grid { grid-template-columns: 1fr; }
   .card { padding: 14px; }
   .nota { font-size: 12px; }
-  .filtros-avanzados { gap: 14px; }
+  .fpc-row { gap: 14px; }
   .fa-group, .segmented { width: 100%; }
   .segmented { display: flex; }
   .segmented button { flex: 1; }
@@ -417,10 +435,17 @@ input[type="range"] { width: 120px; accent-color: var(--rojo); cursor: pointer; 
 
 /* ===================== HEADERS ORDENABLES ================================= */
 .sortable { cursor: pointer; user-select: none; white-space: nowrap; }
-.sortable:hover { background: #f0f4f8 !important; }
-.th-sorted { color: var(--rojo) !important; }
-.sort-ind { font-size: 9px; color: var(--muted); margin-left: 2px; }
-.th-sorted .sort-ind { color: var(--rojo); }
+.sortable:hover { background: #eaf1f8 !important; }
+/* Distintivo circular siempre visible con la flecha de orden (↕ = ordenable,
+   ▲/▼ = columna activa) para que la interacción no pase desapercibida */
+.sort-ind {
+  display: inline-block; min-width: 18px; height: 18px; line-height: 18px;
+  margin-left: 6px; border-radius: 50%; text-align: center;
+  background: #e2e8f0; color: #475569; font-size: 10px; font-weight: 700;
+}
+.sortable:hover .sort-ind { background: #cbd5e1; color: var(--ink); }
+.th-sorted { color: var(--rojo) !important; background: #fef2f2 !important; }
+.th-sorted .sort-ind { background: var(--rojo); color: #fff; }
 
 /* Scrollbars */
 ::-webkit-scrollbar { width: 9px; height: 9px; }

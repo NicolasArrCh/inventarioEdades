@@ -29,10 +29,9 @@ window.Charts = (function () {
     const s = el('svg', { viewBox: `0 0 ${w} ${h}`, preserveAspectRatio: 'xMidYMid meet', class: 'chart-svg' });
     return s;
   }
+  // Número completo con separador de miles (es-CO usa punto), sin abreviar a k/M.
   function fmt(n) {
     if (n == null || isNaN(n)) return '–';
-    if (Math.abs(n) >= 1e6) return (n / 1e6).toFixed(1) + 'M';
-    if (Math.abs(n) >= 1e3) return (n / 1e3).toFixed(1) + 'k';
     return Math.round(n).toLocaleString('es-CO');
   }
   function clear(cont) { cont.innerHTML = ''; }
@@ -202,7 +201,7 @@ window.Charts = (function () {
   /* --- Línea (tendencia histórica) --------------------------------------- */
   function linea(cont, series, opts = {}) {
     clear(cont);
-    const W = 720, H = 260, pad = { t: 18, r: 16, b: 34, l: 50 };
+    const W = 720, H = 260, pad = { t: 18, r: 16, b: 34, l: 78 };
     const s = svg(W, H);
     const iw = W - pad.l - pad.r, ih = H - pad.t - pad.b;
     const n = series[0].puntos.length;

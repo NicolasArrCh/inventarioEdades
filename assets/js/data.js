@@ -10,11 +10,10 @@
  *  detalle punto por punto en docs/CONTEXTO.md sección 11.
  *
  *  >>> LO QUE SIGUE SIENDO DEMOSTRATIVO <<<
- *  El histórico de 90 días (`historia`) no tiene fuente real disponible (el
- *  informe es una foto de un solo corte) — se deja como serie ilustrativa y se
- *  marca así en la propia vista. Los canales FS / GS / HD / Mayoristas tampoco
- *  tienen fuente real todavía (el informe solo cubre TAT) — se muestran como
- *  "pendiente de fuente real" en vez de inventar números.
+ *  Los canales FS / GS / HD / Mayoristas no tienen fuente real todavía (el
+ *  informe solo cubre TAT) — se muestran como "pendiente de fuente real" en
+ *  vez de inventar números. (La vista de histórico de 90 días se retiró: no
+ *  hay serie temporal real disponible, el informe es la foto de un solo corte.)
  *
  *  >>> PUNTO DE INTEGRACIÓN <<<
  *  Cuando se conecte el backend, este archivo se reemplaza por un `fetch` que
@@ -30,23 +29,10 @@
  *    - tiendasTAT[]           : tiendas TAT reales con Alerta 1/2 y PEPS por referencia — pág. 3-5
  *    - alerta2Resumen         : KPIs literales del encabezado de "Referencias en riesgo" (pág. 4)
  *    - meta                   : indicadores de compañía + notas literales del informe
- *    - historia[]             : serie de 90 días — DEMOSTRATIVA (sin fuente real, ver nota arriba)
  * ========================================================================== */
 
 (function () {
   'use strict';
-
-  /* --- PRNG con semilla, usado SOLO para la serie histórica demostrativa -- */
-  function mulberry32(a) {
-    return function () {
-      a |= 0; a = (a + 0x6D2B79F5) | 0;
-      let t = Math.imul(a ^ (a >>> 15), 1 | a);
-      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-    };
-  }
-  const rng = mulberry32(20260630);
-  const rand = (min, max) => min + (max - min) * rng();
 
   /* --- Parámetros de negocio (ver docs/CONTEXTO.md secciones 6 y 11) ------- */
   const PARAMS = {
@@ -127,8 +113,16 @@
     { id: 'aaa',     nombre: 'AAA',               inventario: 26300,    venta: 0 },
   ];
   const ITEMS = ITEMS_RAW.map(i => ({ ...i, dias: i.venta > 0 ? +(i.inventario / i.venta).toFixed(1) : null }));
+
+  // Categoría real señalada por el cliente que no viene desglosada por talla en
+  // el informe: HUEVO CE X 30 CARTON GRIS CANASTA. Se conoce su inventario pero
+  // no su venta día, así que no se puede calcular sus "días de inventario" ni
+  // mostrarla como fila propia (no hay con qué llenar esa columna) — se suma
+  // solo al TOTAL de la tabla, con una nota visible en la vista.
+  const AJUSTE_SIN_DESGLOSAR = { nombre: 'HUEVO CE X 30 CARTON GRIS CANASTA', inventario: 2965037 };
+
   const TALLA_TOTAL = {
-    inventario: ITEMS.reduce((a, i) => a + i.inventario, 0),
+    inventario: ITEMS.reduce((a, i) => a + i.inventario, 0) + AJUSTE_SIN_DESGLOSAR.inventario,
     venta: ITEMS.reduce((a, i) => a + i.venta, 0),
   };
 
@@ -166,7 +160,7 @@
    * vez de inventarlo). "ventaDia" de Alerta 1 se obtiene despejando la propia
    * fórmula del informe (cobertura = inv. total ÷ venta día), no es un dato
    * inventado. Alerta 3 (riesgo de quiebre ≤1 d): el informe no reporta
-   * ninguna tienda en ese estado (ver `NOTA_ALERTA3`). --------------------- */
+   * ninguna tienda en ese estado. ------------------------------------------ */
   const TIENDAS_TAT = [
     // Alerta 1 — cobertura ≥ 5 días
     { nombre: 'TAT VALLEDUPAR',    cediId: 'vup', alerta: 1, invConEdad: 252877, cobertura: 5.4, aGestionar: 220870, invTotal: 365655 },
@@ -174,8 +168,25 @@
     { nombre: 'TAT POPAYAN',       cediId: 'pop', alerta: 1, invConEdad: 232200, cobertura: 5.1, aGestionar: 153656, invTotal: 796202 },
     { nombre: 'TAT VILLAVICENCIO', cediId: 'vvc', alerta: 1, invConEdad: 29149,  cobertura: 5.7, aGestionar: 29149,  invTotal: 51129 },
     // Alerta 2 — cobertura < 5 días (frescura PEPS)
+    //
+    // >>> Referencias completadas desde ventas-1.xlsx (2026-07-01) <<<
+    // El informe deja algunas tiendas sin detalle por referencia y varias
+    // referencias con venta 0, pero la venta real SÍ existe en ventas-1.xlsx.
+    // Fórmula validada contra el propio informe: venta día = unidades vendidas
+    // ÷ días con venta del periodo (26, 27 y 29/06 — el 28 fue domingo);
+    // en TAT Cúcuta cuadra EXACTO a nivel tienda (324.958 ÷ 3 = 108.319) y por
+    // referencia (2.245 y 600). Solo se tomaron coincidencias exactas de nombre.
+    // Las referencias marcadas `deVentas: true` vienen solo del Excel: su
+    // inventario/unidades en riesgo no existen en esa fuente -> null ("–").
+    // Donde el Excel aporta la venta de una referencia que el informe dejaba en
+    // 0, los "días a vender" se recalculan con la fórmula del informe
+    // (en riesgo ÷ venta día).
     { nombre: 'TAT CARTAGENA',         cediId: 'ctg', alerta: 2, invConEdad: 737941, ventaDia: 218658, aGestionar: 737941, diasAVender: 3.4, invTotal: 1198379,
-      referencias: [] },
+      referencias: [ // sin detalle en el informe; venta real de ventas-1.xlsx (÷3 días)
+        { nombre: 'HUEVO M X 30 CARTON VERDE CANASTA', invActual: null, ventaDia: 135875, enRiesgo: null, diasAVender: null, deVentas: true },
+        { nombre: 'HUEVO L X 30 CARTON VERDE CANASTA', invActual: null, ventaDia: 5380,   enRiesgo: null, diasAVender: null, deVentas: true },
+        { nombre: 'HUEVO L X 15 PAGUE 14 PET EN CANASTA.', invActual: null, ventaDia: 2745, enRiesgo: null, diasAVender: null, deVentas: true },
+      ] },
     { nombre: 'TAT BARRANQUILLA',      cediId: 'baq', alerta: 2, invConEdad: 671475, ventaDia: 277257, aGestionar: 671475, diasAVender: 2.4, invTotal: 1190618,
       referencias: [{ nombre: 'HUEVO L X 15 PAGUE 14 PET EN CANASTA.', invActual: 12780, ventaDia: 6905, enRiesgo: 5875, diasAVender: 0.9 }] },
     { nombre: 'TAT BOGOTA MONTEVIDEO', cediId: 'bog', alerta: 2, invConEdad: 933017, ventaDia: 434188, aGestionar: 562526, diasAVender: 1.3, invTotal: 2106540,
@@ -188,7 +199,8 @@
         { nombre: 'HUEVO L X 15 PAGUE 14 PET CAJA X 300.', invActual: 28800, ventaDia: 12730, enRiesgo: 9340, diasAVender: 0.7 },
         { nombre: 'HUEVO XL X 15 PAGUE 14 PET CAJA X 300', invActual: 21000, ventaDia: 3105, enRiesgo: 8700, diasAVender: 2.8 },
         { nombre: 'HUEVO L X 30 CARTON VERDE AMARRADO SIN ETIQUETA', invActual: 14070, ventaDia: 0, enRiesgo: 7920, diasAVender: null },
-        { nombre: 'HUEVO YUMBO X20 CARTON VERDE CANASTA', invActual: 29160, ventaDia: 0, enRiesgo: 6240, diasAVender: null },
+        // venta real de ventas-1.xlsx (14.562 ÷ 3); días a vender = 6.240 ÷ 4.854
+        { nombre: 'HUEVO YUMBO X20 CARTON VERDE CANASTA', invActual: 29160, ventaDia: 4854, enRiesgo: 6240, diasAVender: 1.3, deVentas: true },
         { nombre: 'HUEVO L X 12 PET CAJA X 120', invActual: 4800, ventaDia: -40, enRiesgo: 4800, diasAVender: null },
         { nombre: 'HUEVO L X 12 PAGUE 11 PET CAJA X 120', invActual: 5040, ventaDia: 1176, enRiesgo: 1800, diasAVender: 1.5 },
       ] },
@@ -196,9 +208,11 @@
       referencias: [
         { nombre: 'HUEVO L X 30 CARTON VERDE CANASTA', invActual: 354772, ventaDia: 187427, enRiesgo: 167345, diasAVender: 0.9 },
         { nombre: 'HUEVO XL X 30 CARTON VERDE CANASTA', invActual: 82577, ventaDia: 39247, enRiesgo: 36829, diasAVender: 0.9 },
-        { nombre: 'HUEVO YUMBO X20 CARTON VERDE CANASTA', invActual: 8800, ventaDia: 0, enRiesgo: 8800, diasAVender: null },
+        // venta real de ventas-1.xlsx (2.260 ÷ 3); días a vender = 8.800 ÷ 753
+        { nombre: 'HUEVO YUMBO X20 CARTON VERDE CANASTA', invActual: 8800, ventaDia: 753, enRiesgo: 8800, diasAVender: 11.7, deVentas: true },
         { nombre: 'HUEVO M X 30 CARTON VERDE CANASTA', invActual: 8496, ventaDia: 677, enRiesgo: 6464, diasAVender: 9.5 },
-        { nombre: 'HUEVO XL X 15 PET CAJA X 300', invActual: 300, ventaDia: 0, enRiesgo: 300, diasAVender: null },
+        // venta real de ventas-1.xlsx (2.700 ÷ 3); días a vender = 300 ÷ 900
+        { nombre: 'HUEVO XL X 15 PET CAJA X 300', invActual: 300, ventaDia: 900, enRiesgo: 300, diasAVender: 0.3, deVentas: true },
         { nombre: 'HUEVO XL X 30 CARTON VERDE AMARRADO SIN ETIQUETA CANASTA', invActual: 2100, ventaDia: 1825, enRiesgo: 275, diasAVender: 0.2 },
       ] },
     { nombre: 'TAT MEDELLIN',   cediId: 'med', alerta: 2, invConEdad: 446520, ventaDia: 249598, aGestionar: 239102, diasAVender: 1.0, invTotal: 1096879,
@@ -208,7 +222,8 @@
         { nombre: 'HUEVO M X 30 CARTON VERDE CANASTA', invActual: 32160, ventaDia: 5184, enRiesgo: 15840, diasAVender: 3.1 },
         { nombre: 'HUEVO L X 30 CARTON VERDE AMARRADO SIN ETIQUETA', invActual: 7560, ventaDia: 0, enRiesgo: 7560, diasAVender: null },
         { nombre: 'HUEVO L X 15 PAGUE 14 PET CAJA X 300.', invActual: 12600, ventaDia: 3685, enRiesgo: 5230, diasAVender: 1.4 },
-        { nombre: 'HUEVO YUMBO X20 CARTON VERDE CANASTA', invActual: 5160, ventaDia: 0, enRiesgo: 5160, diasAVender: null },
+        // venta real de ventas-1.xlsx (4.850 ÷ 3); días a vender = 5.160 ÷ 1.617
+        { nombre: 'HUEVO YUMBO X20 CARTON VERDE CANASTA', invActual: 5160, ventaDia: 1617, enRiesgo: 5160, diasAVender: 3.2, deVentas: true },
         { nombre: 'HUEVO XL X 15 PET CAJA X 300 - TAT', invActual: 11700, ventaDia: 4560, enRiesgo: 2580, diasAVender: 0.6 },
         { nombre: 'HUEVO L X 30 CARTON VERDE CANASTA', invActual: 99840, ventaDia: 49162, enRiesgo: 1516, diasAVender: 0.0 },
         { nombre: 'HUEVO XL X 30 CARTON VERDE AMARRADO SIN ETIQUETA CANASTA', invActual: 21600, ventaDia: 10675, enRiesgo: 616, diasAVender: 0.1 },
@@ -225,10 +240,16 @@
         { nombre: 'HUEVO A X 30 CARTON GRIS AMARRADO - ALKOSTO.', invActual: 43500, ventaDia: 0, enRiesgo: 43500, diasAVender: null },
         { nombre: 'HUEVO L X 30 CARTON VERDE CANASTA', invActual: 91762, ventaDia: 60256, enRiesgo: 31506, diasAVender: 0.5 },
       ] },
-    { nombre: 'TAT BOGOTA SIBERIA', cediId: 'bog', alerta: 2, invConEdad: 31434, ventaDia: 0, aGestionar: 31434, diasAVender: null, invTotal: 327013,
-      referencias: [{ nombre: 'HUEVO XL X 15 PET CAJA X 300 - TAT', invActual: 1200, ventaDia: 0, enRiesgo: 1200, diasAVender: null }] },
+    // El informe deja a Siberia con venta 0 ("venta no asignable"), pero la venta
+    // real existe en ventas-1.xlsx: 181.600 und en 3 días = 60.533/día. Con esa
+    // venta, días a vender = 31.434 ÷ 60.533 = 0,5 (fórmula del propio informe).
+    { nombre: 'TAT BOGOTA SIBERIA', cediId: 'bog', alerta: 2, invConEdad: 31434, ventaDia: 60533, aGestionar: 31434, diasAVender: 0.5, invTotal: 327013,
+      referencias: [{ nombre: 'HUEVO XL X 15 PET CAJA X 300 - TAT', invActual: 1200, ventaDia: 2375, enRiesgo: 1200, diasAVender: 0.5, deVentas: true }] },
     { nombre: 'TAT SINCELEJO',  cediId: 'snc', alerta: 2, invConEdad: 28571, ventaDia: 12582, aGestionar: 28571, diasAVender: 2.3, invTotal: 50918,
-      referencias: [] },
+      referencias: [ // sin detalle en el informe; venta real de ventas-1.xlsx (÷2 días con venta: 26–27/06)
+        { nombre: 'HUEVO L X 30 CARTON VERDE CANASTA', invActual: null, ventaDia: 14348, enRiesgo: null, diasAVender: null, deVentas: true },
+        { nombre: 'HUEVO M X 30 CARTON VERDE CANASTA', invActual: null, ventaDia: 4524,  enRiesgo: null, diasAVender: null, deVentas: true },
+      ] },
     { nombre: 'TAT CUCUTA',     cediId: 'cuc', alerta: 2, invConEdad: 92322, ventaDia: 108319, aGestionar: 5076, diasAVender: 0.0, invTotal: 218955,
       referencias: [
         { nombre: 'HUEVO L X 30 CARTON VERDE AMARRADO SIN ETIQUETA', invActual: 21240, ventaDia: 0, enRiesgo: 21240, diasAVender: null },
@@ -246,7 +267,13 @@
   ].map((t, idx) => {
     const cedi = CEDIS.find(c => c.id === t.cediId);
     const ventaDia = t.ventaDia != null ? t.ventaDia : Math.round(t.invTotal / t.cobertura);
-    const referencias = (t.referencias || []).map(r => ({ ...r, itemId: tallaDeReferencia(r.nombre) }));
+    // edadMax por referencia = ventana de frescura (5 d) + "días a vender", regla
+    // definida por el cliente (2026-07-01): p. ej. 1.3 -> 6.3, 0.7 -> 5.7. Sin
+    // "días a vender" (venta 0 o negativa) no hay con qué calcularla -> null ("—").
+    const referencias = (t.referencias || []).map(r => ({
+      ...r, itemId: tallaDeReferencia(r.nombre),
+      edadMax: r.diasAVender != null ? +(PARAMS.ventanaFrescuraDias + r.diasAVender).toFixed(1) : null,
+    }));
     return {
       id: idx, nombre: t.nombre,
       cediId: cedi.id, cediNombre: cedi.nombre, regionId: cedi.regionId, regionNombre: cedi.regionNombre,
@@ -266,27 +293,6 @@
     tatEnRiesgo: 9, deTotalAlerta2: 11, referenciasUnicas: 22, unidadesEnRiesgo: 1250738,
   };
 
-  const NOTA_ALERTA3 = 'Sin tiendas en Alerta 3 (cobertura ≤ 1 día) en el corte de referencia — ' +
-    'TAT Bogotá Siberia queda en 0 por venta no asignable; el resto de tiendas TAT tiene más de 1 día.';
-
-  /* --- Historia 90 días — DEMOSTRATIVA, sin fuente real (el informe es un
-   * único corte). Se mantiene solo para ilustrar la vista de tendencias. --- */
-  const historia = [];
-  const hoy = new Date(2026, 5, 30);
-  let invBase = 5200000;
-  for (let d = 89; d >= 0; d--) {
-    const fecha = new Date(hoy.getTime() - d * 86400000);
-    const dow = fecha.getDay();
-    const factorSemana = (dow === 0) ? 0.55 : (dow === 6 ? 0.8 : 1);
-    const ruido = rand(-0.04, 0.04);
-    const tendencia = 1 + (89 - d) * 0.0008;
-    const inventario = Math.round(invBase * tendencia * (1 + ruido));
-    const ventaDia = Math.round(inventario / rand(3.6, 5.2) * factorSemana);
-    const diasInv = +(inventario / ventaDia).toFixed(2);
-    const pctCritico = +Math.min(38, Math.max(6, 18 + Math.sin(d / 7) * 6 + rand(-3, 3))).toFixed(1);
-    historia.push({ fecha: fecha.toISOString().slice(0, 10), inventario, ventaDia, diasInventario: diasInv, pctCritico });
-  }
-
   /* --- Meta (indicadores de compañía reales — Informe pág. 1) ------------- */
   const meta = {
     fechaCorte: '2026-06-30',
@@ -305,8 +311,8 @@
   window.DB = {
     PARAMS, regiones: REGIONES, cedis: CEDIS, canales: CANALES, items: ITEMS,
     regionalesTAT: REGIONALES_TAT, regionalTAT: REGIONAL_TAT_RESUMEN, regionalTATTotal: REGIONAL_TAT_TOTAL,
-    tiendasTAT: TIENDAS_TAT, alerta2Resumen: ALERTA2_RESUMEN, notaAlerta3: NOTA_ALERTA3,
-    historia, meta, tallaDeReferencia,
+    tiendasTAT: TIENDAS_TAT, alerta2Resumen: ALERTA2_RESUMEN,
+    ajusteTallaSinDesglosar: AJUSTE_SIN_DESGLOSAR, meta, tallaDeReferencia,
 
     cargar: function () { return Promise.resolve(this); },
   };

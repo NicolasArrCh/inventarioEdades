@@ -91,8 +91,12 @@ inventarioEdades/
 Todos los filtros son **multi-selección** ("todas", "algunas" o marcar específicas)
 y se combinan sin conflicto. Afectan a todas las vistas en tiempo real:
 
-- **Región** y **CEDI** → listas con checkboxes y buscador (el CEDI depende de la región); filtran
-  las tiendas TAT por la ciudad que las surte.
+- **Regional** y **CEDI** → listas con checkboxes y buscador (el CEDI depende de la regional).
+  "Regional" es la agrupación comercial real (Occidente / Costa Oriente / Centro, tal como aparece
+  en el informe y en `ventas-1.xlsx`), no un departamento — reemplaza al filtro anterior. Caloto y
+  Pereira quedan en "Sin regional TAT confirmada" en vez de asignarles una regional adivinada (ver
+  `docs/CONTEXTO.md` sección 11.2, incluye la investigación web sobre cómo Huevos Kikes distribuye
+  sus CEDIs).
 - **Talla / categoría** → chips marcables; en Alerta 2 filtran el detalle de referencias en riesgo.
 - **Más filtros** (avanzados, desplegables):
   - Tipo de ubicación (Plantas / CEDIs / Todas)
@@ -100,8 +104,9 @@ y se combinan sin conflicto. Afectan a todas las vistas en tiempo real:
   - Inventario mínimo (sobre el inventario total de la tienda TAT)
 
 El **nivel de análisis** (Nacional / Filtrado / CEDI) se deriva automáticamente de la selección.
-Las vistas **Alerta 1** y **Alerta 2** añaden filtros propios (Regional TAT + umbral de cobertura
-o de días a vender, orden) sobre los filtros globales.
+Las vistas **Alerta 1** y **Alerta 2** añaden filtros propios (umbral de cobertura o de días a
+vender, orden) sobre los filtros globales — ya no tienen un filtro de regional aparte, porque el
+filtro global "Regional" es ahora la misma Regional TAT real.
 
 ---
 
